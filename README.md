@@ -109,9 +109,22 @@ Set it in `.env.local` (see [`.env.example`](.env.example)) or as an EAS build-t
 
 ---
 
+## Building the APK (Google Colab — no EAS/Android Studio needed)
+
+The fastest zero-setup way to produce an installable APK is the included Colab notebook. It installs
+JDK 17, Node 20 and the Android SDK in a free Colab runtime, then builds `app-release.apk` with Gradle:
+
+1. Open [`colab/build_apk.ipynb`](colab/build_apk.ipynb) on GitHub.
+2. Click **"Open in Colab"** (or upload the `.ipynb` to https://colab.research.google.com).
+3. **Run all cells** top-to-bottom (first run ≈ 10–20 min).
+4. The APK downloads automatically; optionally copy it to Google Drive.
+
+> The Colab APK is signed with the Expo debug keystore — fine for sideloading, but **not** for Google
+> Play. For a Play Store AAB, configure a release keystore (see below) or use EAS.
+
 ## Building for Android (EAS)
 
-Android builds run in the cloud via **Expo EAS Build** — no local Android Studio or SDK required.
+Android builds can also run in the cloud via **Expo EAS Build** — no local Android Studio or SDK required.
 
 ### 1. One-time EAS setup
 
