@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "FAST Utilities",
+    "slug": "fast-utilities-android-v1",
+    "version": "1.0.0",
+    "description": "Timetables, exam schedules, free rooms, faculty info, semester plan and campus events for FAST-NU Islamabad — the Android companion to the FAST Exam Table web app.",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "fastutilities",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FAFAF8",
+    "primaryColor": "#073366",
+    "androidStatusBar": {
+      "backgroundColor": "#FAFAF8",
+      "barStyle": "dark-content"
+    },
+    "android": {
+      "package": "com.ammarasad.fastutilities",
+      "versionCode": 1,
+      "permissions": ["android.permission.INTERNET"],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "monochromeImage": "./assets/images/adaptive-icon-monochrome.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "predictiveBackGestureEnabled": true
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ammarasad.fastutilities"
+    },
+    "web": {
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#FAFAF8"
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "apiBaseUrl": "https://fast-nuces-isb.vercel.app"
+    }
+  }
+}
