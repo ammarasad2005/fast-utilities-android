@@ -76,7 +76,7 @@ identical behaviour, and the web repo was not modified to achieve it.
 - ❌ No duplicate database / tables / RLS policies.
 - ❌ No duplicate backend or new Vercel project.
 - ❌ No LLM keys or Supabase keys embedded in the APK.
-- ❌ No modification to the `ammarasad2005/exam-table` repository.
+- ❌ No modification to the `ammarasad2005/FAST-Utilities` repository.
 
 ## Secrets model
 

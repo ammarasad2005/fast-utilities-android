@@ -22,7 +22,7 @@ Timetables, exam schedules, free rooms, faculty info, the semester plan and camp
 | **Semester Timeline** | A sleek live progress bar (with S1/S2/FE markers) on the landing screen. |
 | **Campus Events** | Monthly calendar of student events, seminars and drives. |
 
-All data is served by the **existing web app's Vercel backend** — no duplicate database, backend or AI infrastructure was created. The only backend addition is a tiny, additive [`/api/exam-visibility`](https://github.com/ammarasad2005/exam-table/blob/main/src/app/api/exam-visibility/route.ts) endpoint in the web repo so the app can honour the admin "show exams" toggle without shipping Supabase credentials.
+All data is served by the **existing web app's Vercel backend** — no duplicate database, backend or AI infrastructure was created. The only backend addition is a tiny, additive [`/api/exam-visibility`](https://github.com/ammarasad2005/FAST-Utilities/blob/main/src/app/api/exam-visibility/route.ts) endpoint in the web repo so the app can honour the admin "show exams" toggle without shipping Supabase credentials.
 
 ---
 

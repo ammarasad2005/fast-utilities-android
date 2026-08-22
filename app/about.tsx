@@ -34,8 +34,8 @@ export default function AboutScreen() {
           <LinkRow
             icon="logo-github"
             title="Source (web)"
-            subtitle="github.com/ammarasad2005/exam-table"
-            onPress={() => Linking.openURL('https://github.com/ammarasad2005/exam-table')}
+            subtitle="github.com/ammarasad2005/FAST-Utilities"
+            onPress={() => Linking.openURL('https://github.com/ammarasad2005/FAST-Utilities')}
           />
         </View>
 
