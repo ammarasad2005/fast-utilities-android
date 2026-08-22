@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -7,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
@@ -14,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, deptAccent, deptAccentBg } from '@/theme/colors';
 import { useCachedData } from '@/hooks/useCachedData';
 import { usePref } from '@/hooks/usePref';
-import { fetchRegularSchedule } from '@/api/endpoints';
+import { fetchExamVisibility, fetchRegularSchedule } from '@/api/endpoints';
 import { CACHE_TTL, PREF_KEYS } from '@/api/config';
 import {
   filterExams,
@@ -26,10 +28,27 @@ import { getDaysUntil } from '@/core/dates';
 import { Chip, EmptyState, ErrorState, LoadingState, OfflineNotice, SectionHeader } from '@/components/ui';
 
 export default function ExamsScreen() {
+  const router = useRouter();
   const [school, setSchool] = usePref(PREF_KEYS.examSchool, 'FSC');
   const [batch, setBatch] = usePref(PREF_KEYS.examBatch, '');
   const [dept, setDept] = usePref(PREF_KEYS.examDept, '');
   const [query, setQuery] = useState('');
+
+  // Admin-controlled visibility (from Supabase, resolved server-side).
+  const [showExams, setShowExams] = useState<boolean | null>(null);
+  const loadVisibility = useCallback(async () => {
+    try {
+      const v = await fetchExamVisibility();
+      setShowExams(v.show_exams ?? false);
+    } catch {
+      setShowExams(false); // default hidden, matching the web client
+    }
+  }, []);
+  useEffect(() => {
+    // Fetching external state (admin toggle) — async, so no synchronous setState.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadVisibility();
+  }, [loadVisibility]);
 
   const { data: allExams, isLoading, isFromCache, isRefreshing, error, refresh } =
     useCachedData<ExamEntry[]>('data:regular_schedule', fetchRegularSchedule, CACHE_TTL.schedule);
@@ -63,6 +82,43 @@ export default function ExamsScreen() {
     await Clipboard.setStringAsync(`${e.courseCode} — ${e.courseName}\n${e.date} · ${e.time}`);
   };
 
+  // Visibility gate (admin-controlled): show placeholder while exams are hidden.
+  if (showExams === null) return <LoadingState label="Checking exam availability…" />;
+  if (!showExams) {
+    return (
+      <SafeAreaView edges={['top']} style={styles.safe}>
+        <ScrollView
+          contentContainerStyle={{ padding: 16 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={loadVisibility} tintColor={colors.brand} />
+          }
+        >
+          <Text style={styles.title}>Exam Finder</Text>
+          <Text style={styles.subtitle}>Every exam date &amp; time for your batch and department.</Text>
+          <View style={styles.noExamsWrap}>
+            <View style={styles.noExamsIcon}>
+              <Ionicons name="document-text-outline" size={40} color={colors.textTertiary} />
+              <View style={styles.noExamsClock}>
+                <Ionicons name="time-outline" size={18} color={colors.textSecondary} />
+              </View>
+            </View>
+            <Text style={styles.noExamsTitle}>No exams right now</Text>
+            <Text style={styles.noExamsBody}>
+              {"Exam schedules haven't been published yet for this semester. Check back closer to exam week — we'll have your full schedule ready as soon as it's announced."}
+            </Text>
+            <View style={styles.noExamsTip}>
+              <Ionicons name="book-outline" size={18} color={colors.info} />
+              <Text style={styles.noExamsTipText}>
+                {"Stay focused on your classes — we'll notify you when exams go live."}
+              </Text>
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   if (isLoading) return <LoadingState label="Loading exam schedule…" />;
   if (!allExams || error) {
     return <ErrorState message={error ?? undefined} onRetry={refresh} />;
@@ -77,6 +133,21 @@ export default function ExamsScreen() {
       >
         <Text style={styles.title}>Exam Finder</Text>
         <Text style={styles.subtitle}>Every exam date & time for your batch and department.</Text>
+
+        <Pressable
+          onPress={() => router.push('/custom-exams')}
+          android_ripple={{ color: colors.border }}
+          style={({ pressed }) => [styles.customCard, pressed && { opacity: 0.85 }]}
+        >
+          <View style={styles.customIcon}>
+            <Ionicons name="construct-outline" size={20} color={colors.brand} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.customTitle}>Custom exam schedule</Text>
+            <Text style={styles.customDesc}>Combine exams from any courses you choose.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
+        </Pressable>
 
         {isFromCache ? (
           <View style={{ marginTop: 12 }}>
@@ -234,4 +305,68 @@ const styles = StyleSheet.create({
   examName: { fontSize: 15, fontWeight: '600', color: colors.text },
   examMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   examMeta: { fontSize: 13, color: colors.textSecondary },
+  noExamsWrap: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 16 },
+  noExamsIcon: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.subtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  noExamsClock: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.raised,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noExamsTitle: { fontSize: 24, fontWeight: '800', color: colors.text },
+  noExamsBody: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginTop: 10,
+    maxWidth: 320,
+  },
+  noExamsTip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: colors.infoBg,
+  },
+  noExamsTipText: { fontSize: 13, color: colors.text, flexShrink: 1 },
+  customCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.raised,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    padding: 14,
+    marginTop: 16,
+  },
+  customIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 11,
+    backgroundColor: colors.infoBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+  customDesc: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
 });

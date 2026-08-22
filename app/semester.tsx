@@ -55,16 +55,41 @@ export default function SemesterScreen() {
           {start ? (
             <View style={styles.summaryRow}>
               <Ionicons name="play" size={14} color="#fff" />
-              <Text style={styles.summaryText}>Started {formatKeyDateRange({ label: '', date: start, type: '' })}</Text>
+              <Text style={styles.summaryText}>Started {formatKeyDateRange({ date: start })}</Text>
             </View>
           ) : null}
           {end ? (
             <View style={styles.summaryRow}>
               <Ionicons name="flag" size={14} color="#fff" />
-              <Text style={styles.summaryText}>Finals {formatKeyDateRange({ label: '', date: end, type: '' })}</Text>
+              <Text style={styles.summaryText}>Finals {formatKeyDateRange({ date: end })}</Text>
             </View>
           ) : null}
         </View>
+
+        {/* Holidays */}
+        {calendar.holidays && calendar.holidays.length > 0 ? (
+          <>
+            <SectionHeader title="Holidays" />
+            <View style={styles.holidaysGrid}>
+              {calendar.holidays.map((h) => (
+                <View key={h.label} style={styles.holidayCard}>
+                  <View style={[styles.holidayIcon, h.type === 'religious' ? { backgroundColor: colors.successBg } : { backgroundColor: colors.warningBg }]}>
+                    <Ionicons
+                      name={h.type === 'religious' ? 'moon-outline' : 'flag-outline'}
+                      size={16}
+                      color={h.type === 'religious' ? colors.success : colors.warning}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.holidayLabel}>{h.label}</Text>
+                    <Text style={styles.holidayDate}>{formatKeyDateRange(h)}</Text>
+                  </View>
+                  <Text style={styles.holidayType}>{h.type === 'religious' ? 'Religious' : 'National'}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : null}
 
         {/* Upcoming */}
         <SectionHeader title="Up next" />
@@ -138,6 +163,27 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
   summaryText: { color: '#fff', fontSize: 13 },
   noneText: { color: colors.textTertiary, fontSize: 13 },
+  holidaysGrid: { gap: 8 },
+  holidayCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.raised,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    padding: 12,
+  },
+  holidayIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  holidayLabel: { fontSize: 14, fontWeight: '600', color: colors.text },
+  holidayDate: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  holidayType: { fontSize: 11, color: colors.textTertiary, fontWeight: '600' },
   upcomingCard: {
     backgroundColor: colors.raised,
     borderRadius: 12,

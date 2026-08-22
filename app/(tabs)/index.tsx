@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Image,
   Pressable,
@@ -14,7 +14,14 @@ import { colors } from '@/theme/colors';
 import { useCachedData } from '@/hooks/useCachedData';
 import { fetchSemesterCalendar } from '@/api/endpoints';
 import { CACHE_TTL } from '@/api/config';
-import { getUpcomingKeyDates, formatKeyDateRange, daysUntil } from '@/core/semester';
+import {
+  getUpcomingKeyDates,
+  formatKeyDateRange,
+  daysUntil,
+  getSemesterProgress,
+  getSemesterMilestones,
+  getSemesterWeekNumber,
+} from '@/core/semester';
 import type { SemesterCalendar } from '@/core/types';
 
 type Feature = {
@@ -23,7 +30,6 @@ type Feature = {
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
   route: string;
-  tab?: string;
 };
 
 const FEATURES: Feature[] = [
@@ -35,6 +41,29 @@ const FEATURES: Feature[] = [
   { id: 'events', title: 'Campus Events', description: 'Seminars, drives and activities in one calendar.', icon: 'sparkles', route: '/events' },
 ];
 
+// green → amber → red (mirrors the web app's timeline bar)
+function interpolateColor(pct: number): string {
+  if (pct <= 0) return '#18A36B';
+  if (pct >= 100) return '#D94A59';
+  const stops = [
+    { p: 0, r: 0x18, g: 0xa3, b: 0x6b },
+    { p: 50, r: 0xdc, g: 0xa1, b: 0x2d },
+    { p: 100, r: 0xd9, g: 0x4a, b: 0x59 },
+  ];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i];
+    const b = stops[i + 1];
+    if (pct >= a.p && pct <= b.p) {
+      const t = (pct - a.p) / (b.p - a.p);
+      const r = Math.round(a.r + (b.r - a.r) * t);
+      const g = Math.round(a.g + (b.g - a.g) * t);
+      const bl = Math.round(a.b + (b.b - a.b) * t);
+      return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${bl.toString(16).padStart(2, '0')}`;
+    }
+  }
+  return '#18A36B';
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { data: calendar } = useCachedData<SemesterCalendar>(
@@ -44,6 +73,16 @@ export default function HomeScreen() {
   );
 
   const next = calendar ? getUpcomingKeyDates(calendar, 1)[0] : null;
+
+  const timeline = useMemo(() => {
+    if (!calendar) return null;
+    const progress = getSemesterProgress(calendar);
+    const week = getSemesterWeekNumber(calendar);
+    const milestones = getSemesterMilestones(calendar);
+    if (progress == null) return null;
+    const pct = Math.max(0, Math.min(100, progress));
+    return { pct, week, milestones, color: interpolateColor(pct) };
+  }, [calendar]);
 
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
@@ -57,12 +96,18 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Semester banner */}
+        {/* Semester banner (tap → semester schedule) */}
         {calendar ? (
-          <View style={styles.semesterBanner}>
+          <Pressable
+            onPress={() => router.push('/semester')}
+            android_ripple={{ color: 'rgba(255,255,255,0.15)' }}
+            style={({ pressed }) => [styles.semesterBanner, pressed && { opacity: 0.92 }]}
+          >
             <View style={styles.semesterRow}>
               <Ionicons name="school" size={18} color="#fff" />
               <Text style={styles.semesterName}>{calendar.semester}</Text>
+              <View style={{ flex: 1 }} />
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
             </View>
             {next ? (
               <View style={styles.nextRow}>
@@ -73,6 +118,35 @@ export default function HomeScreen() {
                 </Text>
               </View>
             ) : null}
+          </Pressable>
+        ) : null}
+
+        {/* Thin semester timeline */}
+        {timeline ? (
+          <View style={styles.timelineCard}>
+            <View style={styles.timelineMeta}>
+              <Text style={styles.timelineWeek}>
+                {timeline.week ? `Week ${timeline.week}` : 'Semester progress'}
+              </Text>
+              <Text style={styles.timelinePct}>{Math.round(timeline.pct)}%</Text>
+            </View>
+            <View style={styles.timelineTrack}>
+              <View
+                style={[
+                  styles.timelineFill,
+                  { width: `${timeline.pct}%`, backgroundColor: timeline.color },
+                ]}
+              />
+              {timeline.milestones.map((m) => (
+                <View
+                  key={m.shortLabel}
+                  style={[styles.timelineMarker, { left: `${m.progressPercent}%` }]}
+                >
+                  <View style={[styles.timelineDot, { backgroundColor: timeline.color }]} />
+                  <Text style={styles.timelineMarkerLabel}>{m.shortLabel}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         ) : null}
 
@@ -120,13 +194,35 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brand,
     borderRadius: 14,
     padding: 16,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   semesterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   semesterName: { color: '#fff', fontSize: 17, fontWeight: '700' },
   nextRow: { marginTop: 10 },
   nextLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
   nextDate: { color: '#fff', fontSize: 13, marginTop: 2 },
+  timelineCard: {
+    backgroundColor: colors.raised,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    padding: 14,
+    marginBottom: 4,
+  },
+  timelineMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  timelineWeek: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, letterSpacing: 0.4 },
+  timelinePct: { fontSize: 12, fontWeight: '800', color: colors.text },
+  timelineTrack: {
+    position: 'relative',
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.subtle,
+    marginBottom: 14,
+  },
+  timelineFill: { height: 6, borderRadius: 3 },
+  timelineMarker: { position: 'absolute', top: -3, alignItems: 'center', marginLeft: -4 },
+  timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: colors.raised },
+  timelineMarkerLabel: { fontSize: 9, fontWeight: '800', color: colors.textSecondary, marginTop: 3 },
   sectionLabel: {
     fontSize: 12,
     fontWeight: '700',

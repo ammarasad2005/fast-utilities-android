@@ -17,7 +17,9 @@
     "android": {
       "package": "com.ammarasad.fastutilities",
       "versionCode": 1,
-      "permissions": ["android.permission.INTERNET"],
+      "permissions": [
+        "android.permission.INTERNET"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "monochromeImage": "./assets/images/adaptive-icon-monochrome.png",
@@ -44,7 +46,8 @@
           "backgroundColor": "#FAFAF8"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": false
