@@ -1,12 +1,20 @@
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { colors } from '@/theme/colors';
+import { registerBackgroundSyncAsync } from '@/background/sync';
 
 // Match the Android system bars to the app's light theme.
 SystemUI.setBackgroundColorAsync(colors.bg);
 
 export default function RootLayout() {
+  useEffect(() => {
+    // Idempotent — registers the background auto-sync task (WorkManager) so
+    // campus data refreshes into AsyncStorage even when the app is closed.
+    registerBackgroundSyncAsync();
+  }, []);
+
   return (
     <>
       <StatusBar style="dark" />

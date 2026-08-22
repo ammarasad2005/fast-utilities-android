@@ -106,6 +106,15 @@ means a daily timetable/exam update is picked up and persisted to AsyncStorage
 automatically as the user opens the app or switches back to a tab — no manual
 pull-to-refresh required. Pull-to-refresh still exists as an explicit force.
 
+**Background sync (`src/background/sync.ts`):** when the app is closed, an
+`expo-background-task` (Android WorkManager) periodically refreshes the
+read-heavy campus data and writes it to AsyncStorage — without the app running
+in the foreground. This is *opportunistic* (min 15-min interval, but the OS
+schedules actual runs to save battery / during Doze), so it keeps data
+eventually-fresh rather than guaranteeing a timer. Prompt "class cancelled /
+room shifted" alerts require push notifications (planned follow-up), which will
+layer on top of this sync.
+
 TTLs are defined in `src/api/config.ts`. Dynamic/user-generated data (none in the
 core feature set) would not be cached this way.
 

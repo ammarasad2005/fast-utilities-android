@@ -219,6 +219,8 @@ Cached data is served immediately (works offline) and revalidated in the backgro
 
 **Auto-refresh:** the app revalidates cached data in the background every time a screen regains focus or the app returns to the foreground (throttled to once a minute), so updated timetables/exams are fetched and persisted automatically — no manual pull-to-refresh needed.
 
+**Background sync:** an `expo-background-task` (Android WorkManager) also refreshes campus data into AsyncStorage periodically *while the app is closed* — battery-friendly and OS-scheduled (min ~15 min, deferred by Doze), so data stays eventually-fresh without the app running. Prompt change alerts (e.g. a cancelled class) will come via push notifications, planned as a follow-up on top of this sync.
+
 ---
 
 ## Backend / data compatibility
