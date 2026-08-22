@@ -1,0 +1,73 @@
+name: Build Android APK
+
+# Manual trigger only — no automatic runs on push/PR.
+# Run it from the "Actions" tab → "Build Android APK" → "Run workflow".
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install Android SDK
+        run: |
+          export ANDROID_HOME="$HOME/android-sdk"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl -fsSL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q -o /tmp/cmdtools.zip -d "$ANDROID_HOME/cmdline-tools"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.1.12297006" \
+            "cmake;3.30.5"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prebuild native Android project
+        run: |
+          npx expo prebuild --platform android --no-install
+          printf 'sdk.dir=%s\n' "$ANDROID_HOME" > android/local.properties
+          # NOTE: use printf (not echo >>) so every property lands on its own
+          # line — prebuild writes `expo.inlineModules.watchedDirectories=[]`
+          # last, and a newline-less append corrupts it and breaks autolinking.
+          printf '\norg.gradle.java.home=${{ env.JAVA_HOME }}\n' >> android/gradle.properties
+          printf 'kotlin.daemon.jvmargs=-Xmx1024m\n' >> android/gradle.properties
+          printf 'org.gradle.workers.max=2\n' >> android/gradle.properties
+          sed -i 's/org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m/' android/gradle.properties
+
+      - name: Build release APK
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-utilities-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error

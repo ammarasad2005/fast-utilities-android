@@ -41,10 +41,16 @@ Served from `/data/*` on the production origin:
 | `/data/semester_calendar.json` | Semester Schedule | Key dates, sessionals, finals |
 | `/data/student_events.json` | Campus Events | Student events calendar |
 
+### 2. API routes
+
+| Path | Used by | Notes |
+|---|---|---|
+| `/api/exam-visibility` | Exam Finder | Returns the admin-controlled `show_exams` flag (plus `semester_type` / `semester_name`), resolved server-side from Supabase so the app never ships DB credentials. |
+
 These are the exact files the web app bundles at build time; the mobile app fetches
 them over HTTPS and caches them locally.
 
-### 2. Business logic (ported, not duplicated service-side)
+### 3. Business logic (ported, not duplicated service-side)
 
 The web app's pure data logic lives in `src/lib/*`. The Android app ports the same
 functions into `src/core/*` so results are byte-for-byte consistent:

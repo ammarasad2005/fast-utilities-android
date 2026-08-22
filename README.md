@@ -12,14 +12,17 @@ Timetables, exam schedules, free rooms, faculty info, the semester plan and camp
 
 | Feature | What it does |
 |---|---|
-| **Exam Finder** | Every exam date & time, filtered by school → batch → department, with search and per-exam copy. |
-| **Timetable** | Weekly class schedule for FSC & FSM, filtered by batch / department / section. |
-| **Free Rooms** | Empty classrooms & labs for any day + time slot, grouped by block. |
+| **Exam Finder** | Every exam date & time, filtered by school → batch → department, with search, copy, and admin-controlled visibility (hidden until exams are published). |
+| **Custom Exam Schedule** | Combine exams from any courses you pick (batch / dept / code) into one schedule, with saved bundles. |
+| **Timetable** | Weekly class schedule for FSC & FSM with list **and grid** views, image export/share, and search. |
+| **Custom Timetable** | Build a clash-checked schedule from any classes, with time-clash highlighting and saved bundles. |
+| **Free Rooms** | Campus-wide room availability (no school split), grouped by block, for a specific time slot **or** a custom time range. |
 | **Faculty Info** | Searchable directory with emails, offices and profiles (tap to copy). |
-| **Semester Schedule** | Academic calendar with key dates, sessionals and finals, plus "up next" list. |
+| **Semester Schedule** | Academic calendar with key dates, **holidays**, sessionals and finals, plus an "up next" list. |
+| **Semester Timeline** | A sleek live progress bar (with S1/S2/FE markers) on the landing screen. |
 | **Campus Events** | Monthly calendar of student events, seminars and drives. |
 
-All data is served by the **existing web app's Vercel backend** — no duplicate database, backend or AI infrastructure was created.
+All data is served by the **existing web app's Vercel backend** — no duplicate database, backend or AI infrastructure was created. The only backend addition is a tiny, additive [`/api/exam-visibility`](https://github.com/ammarasad2005/exam-table/blob/main/src/app/api/exam-visibility/route.ts) endpoint in the web repo so the app can honour the admin "show exams" toggle without shipping Supabase credentials.
 
 ---
 
@@ -121,6 +124,21 @@ JDK 17, Node 20 and the Android SDK in a free Colab runtime, then builds `app-re
 
 > The Colab APK is signed with the Expo debug keystore — fine for sideloading, but **not** for Google
 > Play. For a Play Store AAB, configure a release keystore (see below) or use EAS.
+
+## Building the APK (GitHub Actions — manual trigger)
+
+A [`build-apk` workflow](.github/workflows/build-apk.yml) is included. It installs JDK 17, Node 20
+and the Android SDK on a GitHub-hosted runner, then builds `app-release.apk` and uploads it as an
+artifact.
+
+It is **manual-trigger only** (`workflow_dispatch`) — it never runs automatically:
+
+1. Open the repo on GitHub → **Actions** tab.
+2. Select **"Build Android APK"** → **"Run workflow"** → confirm.
+3. When it finishes, download the `fast-utilities-apk` artifact.
+
+> Same caveat as Colab: this APK is signed with the Expo debug keystore (fine for sideloading,
+> not for Google Play). For Play, configure a release keystore or use EAS.
 
 ## Building for Android (EAS)
 
