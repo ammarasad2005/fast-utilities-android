@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 
 export interface DropdownOption<T> {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { API_BASE_URL } from '@/api/config';

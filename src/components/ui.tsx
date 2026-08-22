@@ -8,7 +8,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 
 // ─── Text primitives ──────────────────────────────────────────────────────────

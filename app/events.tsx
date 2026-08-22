@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { fetchStudentEvents } from '@/api/endpoints';

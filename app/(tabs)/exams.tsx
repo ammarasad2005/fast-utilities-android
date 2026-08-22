@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { deptAccent, deptAccentBg } from '@/theme/colors';
 import { exportExamsPng } from '@/api/exportImage';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
