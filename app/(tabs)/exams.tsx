@@ -13,7 +13,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, deptAccent, deptAccentBg } from '@/theme/colors';
+import { deptAccent, deptAccentBg } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { usePref } from '@/hooks/usePref';
 import { fetchExamVisibility, fetchRegularSchedule } from '@/api/endpoints';
@@ -28,6 +29,8 @@ import { getDaysUntil } from '@/core/dates';
 import { Chip, EmptyState, ErrorState, LoadingState, OfflineNotice, SectionHeader } from '@/components/ui';
 
 export default function ExamsScreen() {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const router = useRouter();
   const [school, setSchool] = usePref(PREF_KEYS.examSchool, 'FSC');
   const [batch, setBatch] = usePref(PREF_KEYS.examBatch, '');
@@ -225,6 +228,8 @@ export default function ExamsScreen() {
 }
 
 function ExamRow({ exam, onCopy }: { exam: ExamEntry; onCopy: () => void }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const days = getDaysUntil(exam.date);
   const countdown =
     days === null ? null : days > 0 ? `${days}d` : days === 0 ? 'Today' : `${Math.abs(days)}d ago`;
@@ -261,7 +266,7 @@ function ExamRow({ exam, onCopy }: { exam: ExamEntry; onCopy: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 32 },
   title: { fontSize: 24, fontWeight: '800', color: colors.text, letterSpacing: -0.4 },

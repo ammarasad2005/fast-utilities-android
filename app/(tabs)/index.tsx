@@ -1,16 +1,18 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { fetchSemesterCalendar } from '@/api/endpoints';
 import { CACHE_TTL } from '@/api/config';
@@ -65,6 +67,9 @@ function interpolateColor(pct: number): string {
 }
 
 export default function HomeScreen() {
+  const styles = useStyles(makeStyles);
+  const { colors, theme, themes, setThemeId } = useTheme();
+  const [pickerOpen, setPickerOpen] = useState(false);
   const router = useRouter();
   const { data: calendar } = useCachedData<SemesterCalendar>(
     'data:semester',
@@ -94,6 +99,17 @@ export default function HomeScreen() {
             <Text style={styles.brand}>FAST NUCES · ISB</Text>
             <Text style={styles.tagline}>Your campus, at a glance.</Text>
           </View>
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync().catch(() => {});
+              setPickerOpen(true);
+            }}
+            hitSlop={10}
+            accessibilityLabel="Change app theme"
+            style={({ pressed }) => [styles.themeBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Ionicons name="color-palette-outline" size={20} color={colors.brand} />
+          </Pressable>
         </View>
 
         {/* Semester banner (tap → semester schedule) */}
@@ -104,10 +120,10 @@ export default function HomeScreen() {
             style={({ pressed }) => [styles.semesterBanner, pressed && { opacity: 0.92 }]}
           >
             <View style={styles.semesterRow}>
-              <Ionicons name="school" size={18} color="#fff" />
+              <Ionicons name="school" size={18} color={colors.onBrand} />
               <Text style={styles.semesterName}>{calendar.semester}</Text>
               <View style={{ flex: 1 }} />
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+              <Ionicons name="chevron-forward" size={18} color={colors.onBrand} style={{ opacity: 0.7 }} />
             </View>
             {next ? (
               <View style={styles.nextRow}>
@@ -178,11 +194,51 @@ export default function HomeScreen() {
         </Pressable>
         <Text style={styles.footerNote}>FAST NUCES · Islamabad Campus</Text>
       </ScrollView>
+
+      {/* Theme picker */}
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)}>
+          <Pressable style={styles.pickerSheet} onPress={() => {}}>
+            <View style={styles.pickerHandle} />
+            <Text style={styles.pickerTitle}>APP THEME</Text>
+            {themes.map((t) => {
+              const active = t.id === theme.id;
+              return (
+                <Pressable
+                  key={t.id}
+                  onPress={() => {
+                    if (!active) {
+                      Haptics.selectionAsync().catch(() => {});
+                      setThemeId(t.id);
+                    }
+                  }}
+                  style={({ pressed }) => [
+                    styles.themeRow,
+                    active && styles.themeRowActive,
+                    pressed && { opacity: 0.85 },
+                  ]}
+                >
+                  <View style={styles.swatchRow}>
+                    {t.swatches.map((s) => (
+                      <View key={s} style={[styles.swatch, { backgroundColor: s }]} />
+                    ))}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.themeName}>{t.label}</Text>
+                    <Text style={styles.themeTagline}>{t.tagline}</Text>
+                  </View>
+                  {active ? <Ionicons name="checkmark-circle" size={22} color={colors.brand} /> : null}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 32 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
@@ -197,10 +253,10 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   semesterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  semesterName: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  semesterName: { color: colors.onBrand, fontSize: 17, fontWeight: '700' },
   nextRow: { marginTop: 10 },
-  nextLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
-  nextDate: { color: '#fff', fontSize: 13, marginTop: 2 },
+  nextLabel: { color: colors.onBrand, opacity: 0.7, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
+  nextDate: { color: colors.onBrand, fontSize: 13, marginTop: 2 },
   timelineCard: {
     backgroundColor: colors.raised,
     borderRadius: 14,
@@ -254,4 +310,57 @@ const styles = StyleSheet.create({
   aboutLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 24, alignSelf: 'center' },
   aboutText: { color: colors.textSecondary, fontSize: 13 },
   footerNote: { textAlign: 'center', color: colors.textTertiary, fontSize: 11, marginTop: 6 },
+  themeBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: colors.raised,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  pickerSheet: {
+    backgroundColor: colors.raised,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 28,
+  },
+  pickerHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderStrong,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  pickerTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 1.2,
+    marginBottom: 8,
+  },
+  themeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+  },
+  themeRowActive: { backgroundColor: colors.subtle },
+  swatchRow: {
+    flexDirection: 'row',
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderStrong,
+  },
+  swatch: { width: 16, height: 32 },
+  themeName: { fontSize: 15, fontWeight: '700', color: colors.text },
+  themeTagline: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
 });

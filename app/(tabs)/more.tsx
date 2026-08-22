@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 
 const ITEMS: {
   id: string;
@@ -19,6 +19,8 @@ const ITEMS: {
 ];
 
 export default function MoreScreen() {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const router = useRouter();
 
   return (
@@ -55,7 +57,7 @@ export default function MoreScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 32 },
   title: { fontSize: 24, fontWeight: '800', color: colors.text, letterSpacing: -0.4 },

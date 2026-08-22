@@ -15,7 +15,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { colors, deptAccent, deptAccentBg } from '@/theme/colors';
+import { deptAccent, deptAccentBg } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { fetchFaculty } from '@/api/endpoints';
 import { CACHE_TTL } from '@/api/config';
@@ -27,6 +28,8 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 type FlatMember = FacultyMember & { deptKey: DeptFileKey };
 
 export default function FacultyScreen() {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const [query, setQuery] = useState('');
   const [activeDept, setActiveDept] = useState<'ALL' | DeptFileKey>('ALL');
   const [selected, setSelected] = useState<FlatMember | null>(null);
@@ -105,6 +108,8 @@ export default function FacultyScreen() {
 }
 
 function FacultyRow({ member, onPress }: { member: FlatMember; onPress: () => void }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   return (
     <Pressable
       onPress={onPress}
@@ -128,6 +133,8 @@ function FacultyRow({ member, onPress }: { member: FlatMember; onPress: () => vo
 }
 
 function FacultyModal({ member, onClose }: { member: FlatMember | null; onClose: () => void }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   if (!member) return null;
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -184,6 +191,8 @@ function FacultyModal({ member, onClose }: { member: FlatMember | null; onClose:
 }
 
 function ActionRow({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress?: () => void }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   return (
     <Pressable onPress={onPress} android_ripple={{ color: colors.border }} style={styles.actionRow}>
       <Ionicons name={icon} size={18} color={colors.brand} />
@@ -194,7 +203,7 @@ function ActionRow({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyph
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 32 },
   searchBox: {

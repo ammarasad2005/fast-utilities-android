@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { colors } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { fetchFSCTimetable, fetchFSMTimetable } from '@/api/endpoints';
 import { CACHE_TTL } from '@/api/config';
@@ -55,6 +55,8 @@ function defaultSlotIndex(): number {
 type Mode = 'slot' | 'range';
 
 export default function RoomsScreen() {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const [day, setDay] = useState(defaultDay());
   const [mode, setMode] = useState<Mode>('slot');
   const [slotIndex, setSlotIndex] = useState(defaultSlotIndex());
@@ -129,10 +131,10 @@ export default function RoomsScreen() {
         <SectionHeader title="Time" />
         <View style={styles.segmented}>
           <Pressable onPress={() => setMode('slot')} style={[styles.segment, mode === 'slot' && styles.segmentActive]}>
-            <Text style={[styles.segmentText, mode === 'slot' && { color: '#fff' }]}>Time slot</Text>
+            <Text style={[styles.segmentText, mode === 'slot' && { color: colors.onBrand }]}>Time slot</Text>
           </Pressable>
           <Pressable onPress={() => setMode('range')} style={[styles.segment, mode === 'range' && styles.segmentActive]}>
-            <Text style={[styles.segmentText, mode === 'range' && { color: '#fff' }]}>Time range</Text>
+            <Text style={[styles.segmentText, mode === 'range' && { color: colors.onBrand }]}>Time range</Text>
           </Pressable>
         </View>
 
@@ -195,17 +197,21 @@ export default function RoomsScreen() {
 }
 
 function ChipLocal({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   return (
     <Pressable
       onPress={onPress}
       style={[styles.chip, active && { backgroundColor: colors.brand, borderColor: colors.brand }]}
     >
-      <Text style={[styles.chipText, active && { color: '#fff' }]}>{label}</Text>
+      <Text style={[styles.chipText, active && { color: colors.onBrand }]}>{label}</Text>
     </Pressable>
   );
 }
 
 function RoomGroups({ groups }: { groups: Record<string, string[]> }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   return (
     <>
       {Object.entries(groups).map(([block, rooms]) => (
@@ -224,7 +230,7 @@ function RoomGroups({ groups }: { groups: Record<string, string[]> }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 32 },
   title: { fontSize: 24, fontWeight: '800', color: colors.text, letterSpacing: -0.4 },

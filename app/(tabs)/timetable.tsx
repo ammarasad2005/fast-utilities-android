@@ -14,7 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
-import { colors, deptAccent, deptAccentBg } from '@/theme/colors';
+import { deptAccent, deptAccentBg } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { usePref } from '@/hooks/usePref';
 import { fetchFSCTimetable, fetchFSMTimetable } from '@/api/endpoints';
@@ -35,6 +36,8 @@ const TODAY = new Date().toLocaleString('en', { weekday: 'long' });
 type ViewMode = 'list' | 'grid';
 
 export default function TimetableScreen() {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const router = useRouter();
   const [school, setSchool] = usePref(PREF_KEYS.timetableSchool, 'FSC');
   const [batch, setBatch] = usePref(PREF_KEYS.timetableBatch, '');
@@ -185,9 +188,9 @@ export default function TimetableScreen() {
                 <Ionicons
                   name={v === 'list' ? 'list' : 'grid'}
                   size={16}
-                  color={viewMode === v ? '#fff' : colors.textSecondary}
+                  color={viewMode === v ? colors.onBrand : colors.textSecondary}
                 />
-                <Text style={[styles.segmentText, viewMode === v && { color: '#fff' }]}>
+                <Text style={[styles.segmentText, viewMode === v && { color: colors.onBrand }]}>
                   {v === 'list' ? 'List' : 'Grid'}
                 </Text>
               </Pressable>
@@ -238,6 +241,8 @@ function effectiveDept(depts: string[], current: string): string {
 }
 
 function ClassRow({ entry }: { entry: TimetableEntry }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const isLab = entry.type === 'lab';
   const cancelled = entry.cancelled;
   return (
@@ -274,6 +279,8 @@ function ClassRow({ entry }: { entry: TimetableEntry }) {
 
 /** Horizontal day-column grid view. */
 function GridSchedule({ grouped }: { grouped: { day: string; entries: TimetableEntry[] }[] }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
       <View style={styles.gridRow}>
@@ -312,7 +319,7 @@ function deptKeyOf(e: TimetableEntry): string {
   return e.department.split('/')[0];
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 32 },
   title: { fontSize: 24, fontWeight: '800', color: colors.text, letterSpacing: -0.4 },
@@ -355,7 +362,7 @@ const styles = StyleSheet.create({
   dayName: { fontSize: 16, fontWeight: '700', color: colors.text },
   dayCount: { fontSize: 12, color: colors.textTertiary },
   todayBadge: { backgroundColor: colors.brand, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  todayText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
+  todayText: { color: colors.onBrand, fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
   classCard: {
     flexDirection: 'row',
     backgroundColor: colors.raised,

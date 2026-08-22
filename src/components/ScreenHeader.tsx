@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 
 /**
  * Standard screen header. Shows a back arrow when the screen was pushed onto
@@ -19,6 +19,8 @@ export function ScreenHeader({
   subtitle?: string;
   right?: React.ReactNode;
 }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const router = useRouter();
   const canGoBack = router.canGoBack();
 
@@ -53,7 +55,7 @@ export function ScreenHeader({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: {
     backgroundColor: colors.bg,
   },

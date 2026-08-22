@@ -11,7 +11,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { colors, deptAccent, deptAccentBg } from '@/theme/colors';
+import { deptAccent, deptAccentBg } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { fetchRegularSchedule } from '@/api/endpoints';
 import { CACHE_TTL } from '@/api/config';
@@ -43,6 +44,8 @@ function makeRow(batch: string): Row {
 }
 
 export default function CustomExamsScreen() {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const { data: allExams, isLoading, isRefreshing, error, refresh } = useCachedData<ExamEntry[]>(
     'data:regular_schedule',
     fetchRegularSchedule,
@@ -245,6 +248,8 @@ export default function CustomExamsScreen() {
 }
 
 function CustomExamRow({ exam }: { exam: ExamEntry }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const days = getDaysUntil(exam.date);
   const countdown = days === null ? null : days > 0 ? `${days}d` : days === 0 ? 'Today' : `${Math.abs(days)}d ago`;
   return (
@@ -269,7 +274,7 @@ function CustomExamRow({ exam }: { exam: ExamEntry }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
   linkText: { color: colors.brand, fontWeight: '700', fontSize: 13 },

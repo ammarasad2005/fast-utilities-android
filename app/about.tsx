@@ -2,12 +2,14 @@ import React from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
-import { colors } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { API_BASE_URL } from '@/api/config';
 import { Card } from '@/components/ui';
 import { ScreenHeader } from '@/components/ScreenHeader';
 
 export default function AboutScreen() {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const version = Constants.expoConfig?.version ?? '1.0.0';
 
   return (
@@ -59,6 +61,8 @@ function LinkRow({
   subtitle: string;
   onPress: () => void;
 }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   return (
     <Pressable onPress={onPress} android_ripple={{ color: colors.border }} style={styles.linkRow}>
       <Ionicons name={icon} size={20} color={colors.brand} />
@@ -71,7 +75,7 @@ function LinkRow({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 32 },
   appName: { fontSize: 22, fontWeight: '800', color: colors.text },

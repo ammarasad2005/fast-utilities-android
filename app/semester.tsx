@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { fetchSemesterCalendar } from '@/api/endpoints';
 import { CACHE_TTL } from '@/api/config';
@@ -23,6 +23,8 @@ const TYPE_STYLE: Record<string, { color: string; bg: string; icon: keyof typeof
 };
 
 export default function SemesterScreen() {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const { data: calendar, isLoading, isFromCache, isRefreshing, error, refresh } =
     useCachedData<SemesterCalendar>('data:semester', fetchSemesterCalendar, CACHE_TTL.semester);
 
@@ -123,6 +125,8 @@ export default function SemesterScreen() {
 }
 
 function KeyDateRow({ kd, highlight }: { kd: KeyDate; highlight?: boolean }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const d = daysUntil(kd.date);
   return (
     <View style={styles.upcomingInner}>
@@ -133,7 +137,7 @@ function KeyDateRow({ kd, highlight }: { kd: KeyDate; highlight?: boolean }) {
       <View style={styles.upcomingRight}>
         {d >= 0 ? (
           <View style={[styles.daysBadge, highlight && { backgroundColor: colors.brand }]}>
-            <Text style={[styles.daysBadgeText, highlight && { color: '#fff' }]}>
+            <Text style={[styles.daysBadgeText, highlight && { color: colors.onBrand }]}>
               {d === 0 ? 'Today' : `${d}d`}
             </Text>
           </View>
@@ -145,6 +149,8 @@ function KeyDateRow({ kd, highlight }: { kd: KeyDate; highlight?: boolean }) {
 }
 
 function TypeBadge({ type }: { type: string }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const st = TYPE_STYLE[type] ?? { color: colors.textSecondary, bg: colors.subtle, icon: 'ellipse' as const };
   return (
     <View style={[styles.typeBadge, { backgroundColor: st.bg }]}>
@@ -154,14 +160,14 @@ function TypeBadge({ type }: { type: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 32 },
   summary: { backgroundColor: colors.brand, borderRadius: 16, padding: 18, marginBottom: 4 },
-  summarySemester: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  summarySemester: { color: colors.onBrand, fontSize: 22, fontWeight: '800' },
   summaryYear: { color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 2 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
-  summaryText: { color: '#fff', fontSize: 13 },
+  summaryText: { color: colors.onBrand, fontSize: 13 },
   noneText: { color: colors.textTertiary, fontSize: 13 },
   holidaysGrid: { gap: 8 },
   holidayCard: {

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { fetchStudentEvents } from '@/api/endpoints';
 import { CACHE_TTL } from '@/api/config';
@@ -17,6 +17,8 @@ import { ErrorState, LoadingState, OfflineNotice, SectionHeader } from '@/compon
 import { ScreenHeader } from '@/components/ScreenHeader';
 
 export default function EventsScreen() {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear] = useState(now.getFullYear());
@@ -106,13 +108,13 @@ export default function EventsScreen() {
                   style={[
                     styles.cellDay,
                     !c.inCurrentMonth && { color: colors.textTertiary },
-                    isSelected && { color: '#fff' },
+                    isSelected && { color: colors.onBrand },
                     isToday && !isSelected && { color: colors.brand, fontWeight: '800' },
                   ]}
                 >
                   {c.day}
                 </Text>
-                {hasEvents ? <View style={[styles.dot, isSelected && { backgroundColor: '#fff' }]} /> : null}
+                {hasEvents ? <View style={[styles.dot, isSelected && { backgroundColor: colors.onBrand }]} /> : null}
               </Pressable>
             );
           })}
@@ -146,7 +148,7 @@ export default function EventsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 32 },
   navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },

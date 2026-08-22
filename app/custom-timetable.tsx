@@ -10,7 +10,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { colors } from '@/theme/colors';
+import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { fetchFSCTimetable, fetchFSMTimetable } from '@/api/endpoints';
 import { CACHE_TTL } from '@/api/config';
@@ -50,6 +50,8 @@ function makeRow(batch: string): Row {
 }
 
 export default function CustomTimetableScreen() {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const fsc = useCachedData<RawTimetableJSON>('data:timetable:FSC', fetchFSCTimetable, CACHE_TTL.timetable);
   const fsm = useCachedData<RawTimetableJSON>('data:timetable:FSM', fetchFSMTimetable, CACHE_TTL.timetable);
 
@@ -263,6 +265,8 @@ export default function CustomTimetableScreen() {
 }
 
 function CustomClassRow({ entry, conflict }: { entry: TimetableEntry; conflict: boolean }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   return (
     <View style={[styles.classCard, conflict && styles.classCardConflict]}>
       <View style={styles.classTime}>
@@ -285,7 +289,7 @@ function CustomClassRow({ entry, conflict }: { entry: TimetableEntry; conflict: 
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
   linkText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
