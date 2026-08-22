@@ -21,6 +21,8 @@ export default function RootLayout() {
         <Stack.Screen name="faculty" options={{ title: 'Faculty' }} />
         <Stack.Screen name="semester" options={{ title: 'Semester Schedule' }} />
         <Stack.Screen name="events" options={{ title: 'Campus Events' }} />
+        <Stack.Screen name="custom-exams" options={{ title: 'Custom Exam Schedule' }} />
+        <Stack.Screen name="custom-timetable" options={{ title: 'Custom Timetable' }} />
         <Stack.Screen name="about" options={{ title: 'About' }} />
         <Stack.Screen name="+not-found" />
       </Stack>

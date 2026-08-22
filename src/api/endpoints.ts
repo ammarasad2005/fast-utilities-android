@@ -6,7 +6,7 @@ import type {
   SemesterCalendar,
   StudentEventsPayload,
 } from '@/core/types';
-import { DATA_ENDPOINTS } from './config';
+import { API_BASE_URL, DATA_ENDPOINTS } from './config';
 import { fetchJson } from './client';
 
 /** FSC timetable (FAST School of Computing). */
@@ -37,6 +37,21 @@ export function fetchSemesterCalendar(): Promise<SemesterCalendar> {
 
 export function fetchStudentEvents(): Promise<StudentEventsPayload> {
   return fetchJson<StudentEventsPayload>(DATA_ENDPOINTS.studentEvents);
+}
+
+export interface ExamVisibility {
+  show_exams: boolean;
+  semester_type: 'regular' | 'summer';
+  semester_name: string | null;
+}
+
+/**
+ * Fetch the admin-controlled exam-finder visibility flag from the existing
+ * backend (`/api/exam-visibility`). No Supabase credentials are shipped in the
+ * app — the flag is resolved server-side.
+ */
+export function fetchExamVisibility(): Promise<ExamVisibility> {
+  return fetchJson<ExamVisibility>(`${API_BASE_URL}/api/exam-visibility`);
 }
 
 /** Extract a flat faculty list from the raw grouped payload. */
