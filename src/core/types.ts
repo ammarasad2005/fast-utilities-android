@@ -184,4 +184,24 @@ export interface SemesterCalendar {
   academicYear?: string;
   generatedAt?: string;
   keyDates: KeyDate[];
+  holidays?: Holiday[];
+  academicRanges?: AcademicRange[];
+  weekCount?: number;
+  totalCreditHoursPerWeek?: number;
+}
+
+export interface Holiday {
+  label: string;
+  date: string; // ISO "2026-08-14"
+  endDate?: string;
+  type: 'national' | 'religious';
+  note?: string;
+}
+
+export interface AcademicRange {
+  label: string;
+  startDate: string;
+  endDate: string;
+  color: string;
+  type: 'classes' | 'exams';
 }

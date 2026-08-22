@@ -5,12 +5,13 @@
  * src/lib modules, so the mobile client reproduces identical data semantics.
  */
 
-import { flattenTimetable, filterTimetable, formatTime, formatTimeRange, getAvailableSections, extractTimeFromCourseName } from '@/core/timetable';
+import { flattenTimetable, filterTimetable, formatTime, formatTimeRange, getAvailableSections, extractTimeFromCourseName, detectConflicts, makeKey } from '@/core/timetable';
 import { filterExams, filterSummerExams, matchesSummerCourse, groupByDay, sortByChronological } from '@/core/exams';
-import { buildRoomCalendar, getAvailableRooms, STANDARD_SLOTS, groupRoomsByBlock } from '@/core/roomLogic';
+import { buildRoomCalendar, getAvailableRooms, STANDARD_SLOTS, groupRoomsByBlock, mergeRoomCalendars } from '@/core/roomLogic';
 import { flattenFaculty, searchFaculty, getFacultyRank } from '@/core/faculty';
 import { getCalendarCells, parseEventDate } from '@/core/events';
-import type { RawTimetableJSON, ExamEntry, RawFacultyDepartment } from '@/core/types';
+import { getSemesterProgress, getSemesterMilestones, getSemesterStartDate, getSemesterEndDate, getFinalExamsEndDate, getSemesterWeekNumber } from '@/core/semester';
+import type { RawTimetableJSON, ExamEntry, RawFacultyDepartment, TimetableEntry, SemesterCalendar } from '@/core/types';
 
 // ─── Timetable ────────────────────────────────────────────────────────────────
 
@@ -92,20 +93,43 @@ describe('getAvailableSections', () => {
 });
 
 describe('time formatting', () => {
-  it('applies the FAST PM heuristic (hours 1–7 are PM)', () => {
-    expect(formatTime('08:30')).toBe('8:30 AM');
-    expect(formatTime('14:00')).toBe('2:00 PM');
-    expect(formatTime('01:00')).toBe('1:00 PM');
+  it('applies the FAST PM heuristic (hours 1–7 are PM) and zero-pads hours', () => {
+    expect(formatTime('08:30')).toBe('08:30 AM');
+    expect(formatTime('14:00')).toBe('02:00 PM');
+    expect(formatTime('01:00')).toBe('01:00 PM');
   });
 
-  it('formats a range', () => {
-    expect(formatTimeRange('08:30 - 10:00')).toBe('8:30 AM – 10:00 AM');
+  it('formats a range with zero-padded hours', () => {
+    expect(formatTimeRange('08:30 - 10:00')).toBe('08:30 AM – 10:00 AM');
   });
 
   it('extracts time embedded in a course name', () => {
     const { cleanName, time } = extractTimeFromCourseName('DB (08:30-10:00)');
     expect(cleanName).toBe('DB');
     expect(time).toBe('08:30-10:00');
+  });
+});
+
+describe('detectConflicts', () => {
+  it('detects overlapping classes in the same section', () => {
+    const entries = flattenTimetable(rawTimetable);
+    // CR-01 (DB, sec A) and CR-02 (DB, sec A1) both run Monday 08:30-10:00,
+    // same normalized section "A" → conflict.
+    const conflicts = detectConflicts(entries);
+    expect(conflicts.size).toBeGreaterThan(0);
+  });
+
+  it('returns an empty set when nothing overlaps', () => {
+    const noConflict: TimetableEntry[] = [
+      { courseName: 'A', batch: '2024', department: 'CS', section: 'A', day: 'Monday', time: '08:30 - 10:00', room: 'CR-01', type: 'lecture', category: 'regular' },
+      { courseName: 'B', batch: '2024', department: 'CS', section: 'A', day: 'Monday', time: '10:00 - 11:20', room: 'CR-02', type: 'lecture', category: 'regular' },
+    ];
+    expect(detectConflicts(noConflict).size).toBe(0);
+  });
+
+  it('makeKey format matches day|time|course|section', () => {
+    const e: TimetableEntry = { courseName: 'DB', batch: '2024', department: 'CS', section: 'A', day: 'Monday', time: '08:30 - 10:00', room: 'CR-01', type: 'lecture', category: 'regular' };
+    expect(makeKey(e)).toBe('Monday|08:30 - 10:00|DB|A');
   });
 });
 
@@ -251,5 +275,65 @@ describe('events calendar', () => {
     expect(cells.length % 7).toBe(0);
     expect(cells.length).toBeGreaterThanOrEqual(28);
     expect(cells.some((c) => c.inCurrentMonth)).toBe(true);
+  });
+});
+
+// ─── Semester timeline ────────────────────────────────────────────────────────
+
+const semesterCal: SemesterCalendar = {
+  semester: 'Fall 2026',
+  keyDates: [
+    { label: 'First Day of Classes', date: '2026-08-17', type: 'academic' },
+    { label: 'First Sessional Examination', date: '2026-09-19', type: 'exam' },
+    { label: 'Second Sessional Examination', date: '2026-10-29', type: 'exam' },
+    { label: 'Last Day of Classes', date: '2026-12-04', type: 'academic' },
+    { label: 'Final Examinations', date: '2026-12-14', endDate: '2027-01-08', type: 'exam' },
+  ],
+  holidays: [
+    { label: 'Independence Day', date: '2026-08-14', type: 'national' },
+    { label: 'Eid Milad Nabi', date: '2026-08-26', type: 'religious' },
+  ],
+};
+
+describe('semester timeline', () => {
+  it('finds start and end dates', () => {
+    expect(getSemesterStartDate(semesterCal)).toBe('2026-08-17');
+    expect(getSemesterEndDate(semesterCal)).toBe('2026-12-04');
+    expect(getFinalExamsEndDate(semesterCal)).toBe('2027-01-08');
+  });
+
+  it('computes week number', () => {
+    const week = getSemesterWeekNumber(semesterCal, new Date('2026-08-24T12:00:00'));
+    expect(week).toBe(2);
+  });
+
+  it('computes progress between 0 and 100 mid-semester', () => {
+    const progress = getSemesterProgress(semesterCal, new Date('2026-10-01T12:00:00'));
+    expect(progress).toBeGreaterThan(0);
+    expect(progress).toBeLessThan(100);
+  });
+
+  it('returns S1/S2/FE milestones positioned within 0-100', () => {
+    const milestones = getSemesterMilestones(semesterCal);
+    expect(milestones.map((m) => m.shortLabel)).toEqual(['S1', 'S2', 'FE']);
+    for (const m of milestones) {
+      expect(m.progressPercent).toBeGreaterThanOrEqual(0);
+      expect(m.progressPercent).toBeLessThanOrEqual(100);
+    }
+  });
+});
+
+// ─── Room calendar merge ──────────────────────────────────────────────────────
+
+describe('mergeRoomCalendars', () => {
+  it('merges two calendars without losing rooms or slots', () => {
+    const a = buildRoomCalendar(rawTimetable); // CR-01, CR-02, CR-05, LAB-1
+    const b: ReturnType<typeof buildRoomCalendar> = {
+      'CR-01': { Monday: [{ start: 600, end: 680 }] },
+      'B-201': { Monday: [{ start: 600, end: 680 }] },
+    };
+    const merged = mergeRoomCalendars(a, b);
+    expect(Object.keys(merged).sort()).toEqual(['B-201', 'CR-01', 'CR-02', 'CR-05', 'LAB-1'].sort());
+    expect(merged['CR-01'].Monday.length).toBeGreaterThanOrEqual(2);
   });
 });

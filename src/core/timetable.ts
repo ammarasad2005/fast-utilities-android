@@ -220,10 +220,12 @@ export function formatTime(t: string): string {
   const period = h >= 12 ? 'PM' : 'AM';
   if (h > 12) h -= 12;
   if (h === 0) h = 12;
-  return `${h}:${min} ${period}`;
+  // Zero-pad the hour so single-digit times ("8:30 AM") align with
+  // double-digit times ("10:00 AM") in fixed-width list layouts.
+  return `${String(h).padStart(2, '0')}:${min} ${period}`;
 }
 
-/** "08:30 - 10:00" → "8:30 – 10:00 AM" */
+/** "08:30 - 10:00" → "08:30 – 10:00 AM" */
 export function formatTimeRange(t: string): string {
   if (!t || t === 'TBA' || t === 'Unknown Time') return t;
   const parts = t.split('-').map((s) => s.trim());
@@ -231,4 +233,62 @@ export function formatTimeRange(t: string): string {
     return `${formatTime(parts[0])} – ${formatTime(parts[1])}`;
   }
   return formatTime(t);
+}
+
+// ─── Conflict detection (custom timetable) ────────────────────────────────────
+// Ported from the web app's src/lib/timetable-filter.ts.
+
+/** "08:30 - 10:00" → [startMin, endMin] (90-min fallback for single times). */
+export function parseTimeRange(t: string): [number, number] {
+  const parts = t.split('-').map((s) => s.trim());
+  if (parts.length >= 2) {
+    return [parseTimeToMinutes(parts[0]), parseTimeToMinutes(parts[parts.length - 1])];
+  }
+  const start = parseTimeToMinutes(t);
+  return [start, start + 90];
+}
+
+export function makeKey(e: TimetableEntry): string {
+  return `${e.day}|${e.time}|${e.courseName}|${e.section}`;
+}
+
+function overlaps(a: TimetableEntry, b: TimetableEntry): boolean {
+  const [aStart, aEnd] = parseTimeRange(a.time);
+  const [bStart, bEnd] = parseTimeRange(b.time);
+  return aStart < bEnd && bStart < aEnd;
+}
+
+/** Returns the keys of entries that overlap in time on the same day. */
+export function detectConflicts(entries: TimetableEntry[], includeRepeats = true): Set<string> {
+  const conflicting = new Set<string>();
+  const byDay = new Map<string, TimetableEntry[]>();
+
+  for (const e of entries) {
+    if (!byDay.has(e.day)) byDay.set(e.day, []);
+    byDay.get(e.day)!.push(e);
+  }
+
+  for (const dayEntries of byDay.values()) {
+    for (let i = 0; i < dayEntries.length; i++) {
+      for (let j = i + 1; j < dayEntries.length; j++) {
+        const a = dayEntries[i];
+        const b = dayEntries[j];
+
+        if (a.rescheduled || b.rescheduled || a.exam || b.exam) continue;
+        if (a.day === 'Saturday' || b.day === 'Saturday') continue;
+        if (!includeRepeats && (a.category === 'repeat' || b.category === 'repeat')) continue;
+
+        const aNorm = a.section.replace(/\d+$/, '');
+        const bNorm = b.section.replace(/\d+$/, '');
+        if (aNorm !== bNorm) continue;
+
+        if (overlaps(a, b)) {
+          conflicting.add(makeKey(a));
+          conflicting.add(makeKey(b));
+        }
+      }
+    }
+  }
+
+  return conflicting;
 }

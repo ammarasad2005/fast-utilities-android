@@ -133,6 +133,23 @@ export function getAvailableRooms(
   return { fullyVacant, partiallyVacant };
 }
 
+/** Merge two room calendars (e.g. FSC + FSM) into a single campus-wide calendar. */
+export function mergeRoomCalendars(a: RoomCalendar, b: RoomCalendar): RoomCalendar {
+  const out: RoomCalendar = {};
+  const add = (src: RoomCalendar) => {
+    for (const [room, days] of Object.entries(src)) {
+      if (!out[room]) out[room] = {};
+      for (const [day, slots] of Object.entries(days)) {
+        if (!out[room][day]) out[room][day] = [];
+        out[room][day].push(...slots);
+      }
+    }
+  };
+  add(a);
+  add(b);
+  return out;
+}
+
 export function groupRoomsByBlock(rooms: string[]): Record<string, string[]> {
   const groups: Record<string, string[]> = {
     'Block A': [],
