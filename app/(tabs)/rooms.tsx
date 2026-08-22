@@ -99,7 +99,7 @@ export default function RoomsScreen() {
   };
 
   if (isLoading) return <LoadingState label="Building room availability…" />;
-  if (error || (fsc.error && fsm.error)) return <ErrorState message={error ?? undefined} onRetry={refresh} />;
+  if (fsc.error && fsm.error) return <ErrorState message={error ?? undefined} onRetry={refresh} />;
 
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>

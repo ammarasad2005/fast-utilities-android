@@ -145,7 +145,7 @@ export default function CustomTimetableScreen() {
   const deleteBundle = (id: string) => persistBundles(bundles.filter((b) => b.id !== id));
 
   if (isLoading) return <LoadingState label="Loading timetables…" />;
-  if (error || entries.length === 0) return <ErrorState message={error ?? undefined} onRetry={refresh} />;
+  if ((fsc.error && fsm.error) || entries.length === 0) return <ErrorState message={error ?? undefined} onRetry={refresh} />;
 
   const conflictCount = conflicts.size;
 
