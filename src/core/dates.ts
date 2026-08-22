@@ -90,10 +90,50 @@ export function formatISODate(isoDate: string): string {
   return `${day} ${dd} ${month}`;
 }
 
+/** ISO date ("2026-08-17") → "17 Aug" (context already shows the weekday). */
+export function formatISODateShort(isoDate: string): string {
+  const d = new Date(isoDate + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return isoDate;
+  return `${d.getDate()} ${d.toLocaleString('en', { month: 'short' })}`;
+}
+
 /** Days from today to an ISO date (positive = future). */
 export function daysUntil(isoDate: string, now: Date = new Date()): number {
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
   const target = new Date(isoDate + 'T00:00:00');
   return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+// ─── Effective-today logic (ported from the web app's src/lib/dates.ts) ──────
+
+/** Last BS class of the day ends ~5:15–5:20 PM; at 5:30 PM the day is "over". */
+const DAY_END_MINUTES = 17 * 60 + 30;
+
+function toISOLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = `${d.getMonth() + 1}`.padStart(2, '0');
+  const dd = `${d.getDate()}`.padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+/**
+ * From 5:30 PM to 11:59 PM the EFFECTIVE day is tomorrow (all BS classes are
+ * done for the day — the user is looking at what comes next, like the web app).
+ */
+export function getEffectiveToday(now: Date = new Date()): { isoDate: string; dayName: string } {
+  const d = new Date(now);
+  if (now.getHours() * 60 + now.getMinutes() >= DAY_END_MINUTES) {
+    d.setDate(d.getDate() + 1);
+  }
+  const isoDate = toISOLocal(d);
+  return { isoDate, dayName: d.toLocaleString('en', { weekday: 'long' }) };
+}
+
+/**
+ * Whether the "effective today" has already rolled over to tomorrow
+ * (5:30 PM–11:59 PM) — labels should say "TOMORROW" instead of "TODAY".
+ */
+export function isTomorrowPreview(now: Date = new Date()): boolean {
+  return now.getHours() * 60 + now.getMinutes() >= DAY_END_MINUTES;
 }

@@ -35,9 +35,11 @@ import {
   makeKey,
 } from '@/core/timetable';
 import type { RawTimetableJSON, TimetableEntry } from '@/core/types';
+import { DAYS_ORDER } from '@/core/types';
+import { getEffectiveToday, isTomorrowPreview } from '@/core/dates';
 import { Dropdown } from '@/components/Dropdown';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { ScheduleGrid } from '@/components/ScheduleGrid';
+import { WeekGrid, type WeekGridDay } from '@/components/WeekGrid';
 import { EmptyState, ErrorState, LoadingState, SectionHeader } from '@/components/ui';
 
 const BUNDLES_KEY = 'custom:timetable_bundles';
@@ -228,6 +230,19 @@ export default function CustomTimetableScreen() {
   }, [matchedFor, mode, activeBundle, rows, school]);
   const conflicts = useMemo(() => detectConflicts(matched), [matched]);
   const grouped = useMemo(() => groupByDayTimetable(matched), [matched]);
+
+  // Grid days in fixed Mon–Sat order; custom mixes batches/schools whose sheet
+  // dates may differ, so day badges fall back to matching by day name.
+  const effective = getEffectiveToday();
+  const tomorrowPreview = isTomorrowPreview();
+  const gridDays = useMemo<WeekGridDay[]>(() => {
+    const byDay = new Map(grouped.map((g) => [g.day, g.entries]));
+    return DAYS_ORDER.map((d) => ({
+      dayName: d,
+      entries: byDay.get(d) ?? [],
+      badge: d === effective.dayName ? (tomorrowPreview ? 'tomorrow' : 'today') : null,
+    }));
+  }, [grouped, effective.dayName, tomorrowPreview]);
 
   // ── Builder actions ─────────────────────────────────────────────────────────
   const updateRow = (id: string, patch: Partial<Row>) =>
@@ -652,7 +667,7 @@ export default function CustomTimetableScreen() {
             </View>
           ))
         ) : (
-          <ScheduleGrid grouped={grouped} />
+          <WeekGrid days={gridDays} />
         )}
       </ScrollView>
 

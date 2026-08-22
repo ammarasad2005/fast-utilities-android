@@ -12,6 +12,20 @@ export function getSemesterStartDate(cal: SemesterCalendar): string | null {
   return start?.date ?? null;
 }
 
+/**
+ * Used to suppress "today" highlighting and ongoing-class detection before the
+ * semester has actually started (mirrors the web app).
+ */
+export function isBeforeSemesterStart(cal: SemesterCalendar | null, now: Date = new Date()): boolean {
+  if (!cal) return false;
+  const startISO = getSemesterStartDate(cal);
+  if (!startISO) return false;
+  const start = new Date(startISO + 'T00:00:00');
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  return today < start;
+}
+
 /** Returns the "Last Day of Classes" ISO date, or null. */
 export function getSemesterEndDate(cal: SemesterCalendar): string | null {
   const lastDay = cal.keyDates?.find((k) =>

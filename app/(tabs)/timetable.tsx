@@ -20,9 +20,11 @@ import { deptAccent } from '@/theme/colors';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { usePref } from '@/hooks/usePref';
-import { fetchExamVisibility, fetchFSCTimetable, fetchFSMTimetable, type ExamVisibility } from '@/api/endpoints';
+import { fetchExamVisibility, fetchFSCTimetable, fetchFSMTimetable, fetchSemesterCalendar, type ExamVisibility } from '@/api/endpoints';
 import { exportTimetablePng } from '@/api/exportImage';
 import { CACHE_TTL, PREF_KEYS } from '@/api/config';
+import { formatISODateShort, getEffectiveToday, isTomorrowPreview } from '@/core/dates';
+import { isBeforeSemesterStart } from '@/core/semester';
 import {
   clearSavedSchedule,
   describeSavedSchedule,
@@ -40,11 +42,10 @@ import {
   groupByDayTimetable,
   makeKey,
 } from '@/core/timetable';
-import { type RawTimetableJSON, type TimetableEntry } from '@/core/types';
-import { ScheduleGrid } from '@/components/ScheduleGrid';
+import { DAYS_ORDER, TIMETABLE_META_KEY, type RawTimetableJSON, type SemesterCalendar, type TimetableEntry } from '@/core/types';
+import { WeekGrid, type WeekGridDay } from '@/components/WeekGrid';
 import { Chip, EmptyState, ErrorState, LoadingState, OfflineNotice, SectionHeader } from '@/components/ui';
 
-const TODAY = new Date().toLocaleString('en', { weekday: 'long' });
 type ViewMode = 'list' | 'grid';
 
 /** Course identity for section-choice: same course (dept+category+name) across sections. */
@@ -114,6 +115,12 @@ export default function TimetableScreen() {
     CACHE_TTL.schedule
   );
   const semesterName = visibility?.semester_name ?? undefined;
+
+  const { data: calendar } = useCachedData<SemesterCalendar>(
+    'data:semester',
+    fetchSemesterCalendar,
+    CACHE_TTL.semester
+  );
 
   const entries = useMemo(() => (raw ? flattenTimetable(raw) : []), [raw]);
 
@@ -295,6 +302,38 @@ export default function TimetableScreen() {
   }, [displayed, query]);
 
   const grouped = useMemo(() => groupByDayTimetable(filtered), [filtered]);
+
+  // Dates per day come from the sheet metadata embedded in the timetable JSON
+  // (__meta__.days → {day, isoDate}), like the web app / export. Combined with
+  // the web's "effective today" rule the app can stamp TODAY / TOMORROW.
+  const dateByDay = useMemo(() => {
+    const map = new Map<string, string>();
+    const metaDays = raw?.[TIMETABLE_META_KEY]?.days;
+    if (metaDays) for (const d of metaDays) if (d.isoDate) map.set(d.day, d.isoDate);
+    return map;
+  }, [raw]);
+
+  // Effective (today|tomorrow) per web rules: after 5:30 PM we preview tomorrow,
+  // and the highlight is suppressed before the semester has started.
+  const effective = getEffectiveToday();
+  const tomorrowPreview = isTomorrowPreview();
+  const highlightSuppressed = isBeforeSemesterStart(calendar ?? null);
+  const isEffectiveDay = (dayName: string): boolean => {
+    if (highlightSuppressed) return false;
+    const iso = dateByDay.get(dayName);
+    return iso ? iso === effective.isoDate : dayName === effective.dayName;
+  };
+
+  const gridDays = useMemo<WeekGridDay[]>(() => {
+    const byDay = new Map(grouped.map((g) => [g.day, g.entries]));
+    return DAYS_ORDER.map((d) => ({
+      dayName: d,
+      isoDate: dateByDay.get(d),
+      entries: byDay.get(d) ?? [],
+      badge: isEffectiveDay(d) ? (tomorrowPreview ? 'tomorrow' : 'today') : null,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grouped, dateByDay, highlightSuppressed, tomorrowPreview, effective.isoDate, effective.dayName]);
 
   const pickedElectiveKeys = useMemo(() => new Set(resultPrefs.pickedElectives), [resultPrefs.pickedElectives]);
 
@@ -527,7 +566,14 @@ export default function TimetableScreen() {
             <View key={g.day} style={{ marginBottom: 12 }}>
               <View style={styles.dayHeader}>
                 <Text style={styles.dayName}>{g.day}</Text>
-                {g.day === TODAY ? <View style={styles.todayBadge}><Text style={styles.todayText}>TODAY</Text></View> : null}
+                {dateByDay.get(g.day) ? (
+                  <Text style={styles.dayDate}>{formatISODateShort(dateByDay.get(g.day)!)}</Text>
+                ) : null}
+                {isEffectiveDay(g.day) ? (
+                  <View style={styles.todayBadge}>
+                    <Text style={styles.todayText}>{tomorrowPreview ? 'TOMORROW' : 'TODAY'}</Text>
+                  </View>
+                ) : null}
                 <Text style={styles.dayCount}>{g.entries.length} classes</Text>
               </View>
               {g.entries.map((e, i) => {
@@ -547,7 +593,7 @@ export default function TimetableScreen() {
             </View>
           ))
         ) : (
-          <ScheduleGrid grouped={grouped} todayName={TODAY} />
+          <WeekGrid days={gridDays} />
         )}
 
         {/* Electives / Others */}
@@ -762,6 +808,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   exportText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
   dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, paddingTop: 4 },
   dayName: { fontSize: 16, fontWeight: '700', color: colors.text },
+  dayDate: { fontSize: 12, fontWeight: '600', color: colors.textTertiary },
   dayCount: { fontSize: 12, color: colors.textTertiary },
   todayBadge: { backgroundColor: colors.brand, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   todayText: { color: colors.onBrand, fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
