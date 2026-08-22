@@ -11,10 +11,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
+import * as Sharing from 'expo-sharing';
 import { deptAccent, deptAccentBg } from '@/theme/colors';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
-import { fetchRegularSchedule } from '@/api/endpoints';
+import { fetchExamVisibility, fetchRegularSchedule } from '@/api/endpoints';
+import { exportExamsPng } from '@/api/exportImage';
 import { CACHE_TTL } from '@/api/config';
 import { groupByDay, sortByChronological } from '@/core/exams';
 import type { ExamEntry } from '@/core/types';
@@ -124,6 +126,32 @@ export default function CustomExamsScreen() {
 
   const deleteBundle = (id: string) => persistBundles(bundles.filter((b) => b.id !== id));
 
+  // Server-rendered PNG export (identical layout to the website's export).
+  const [exporting, setExporting] = useState(false);
+  const [semesterName, setSemesterName] = useState<string | null>(null);
+  useEffect(() => {
+    fetchExamVisibility()
+      .then((v) => setSemesterName(v.semester_name ?? null))
+      .catch(() => {});
+  }, []);
+  const onExport = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setExporting(true);
+    try {
+      const uri = await exportExamsPng(matched, {
+        isCustom: true,
+        semesterName: semesterName ?? undefined,
+      });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share exam schedule' });
+      }
+    } catch (e) {
+      console.error('Export failed:', e);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const copyAll = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const text = matched
@@ -226,7 +254,17 @@ export default function CustomExamsScreen() {
         {/* Results */}
         <SectionHeader
           title={`Your schedule · ${matched.length} exam${matched.length === 1 ? '' : 's'}`}
-          right={matched.length ? <Text style={styles.linkText} onPress={copyAll}>Copy all</Text> : null}
+          right={
+            matched.length ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <Text style={styles.linkText} onPress={copyAll}>Copy all</Text>
+                <Pressable onPress={onExport} style={styles.exportBtn} disabled={exporting}>
+                  <Ionicons name="share-outline" size={15} color={colors.brand} />
+                  <Text style={styles.exportText}>{exporting ? 'Exporting…' : 'Export'}</Text>
+                </Pressable>
+              </View>
+            ) : null
+          }
         />
         {matched.length === 0 ? (
           <EmptyState icon="document-text-outline" title="No exams match" message="Select at least one course with a valid code." />
@@ -278,6 +316,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
   linkText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.brand },
+  exportText: { color: colors.brand, fontWeight: '700', fontSize: 12 },
   noneText: { color: colors.textTertiary, fontSize: 13, marginBottom: 8 },
   bundleRow: {
     flexDirection: 'row',

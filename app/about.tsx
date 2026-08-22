@@ -9,7 +9,6 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 
 export default function AboutScreen() {
   const styles = useStyles(makeStyles);
-  const { colors } = useTheme();
   const version = Constants.expoConfig?.version ?? '1.0.0';
 
   return (

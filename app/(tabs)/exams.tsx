@@ -12,8 +12,10 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
+import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import { deptAccent, deptAccentBg } from '@/theme/colors';
+import { exportExamsPng } from '@/api/exportImage';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { usePref } from '@/hooks/usePref';
@@ -39,10 +41,12 @@ export default function ExamsScreen() {
 
   // Admin-controlled visibility (from Supabase, resolved server-side).
   const [showExams, setShowExams] = useState<boolean | null>(null);
+  const [semesterName, setSemesterName] = useState<string | null>(null);
   const loadVisibility = useCallback(async () => {
     try {
       const v = await fetchExamVisibility();
       setShowExams(v.show_exams ?? false);
+      setSemesterName(v.semester_name ?? null);
     } catch {
       setShowExams(false); // default hidden, matching the web client
     }
@@ -83,6 +87,26 @@ export default function ExamsScreen() {
   const onCopy = async (e: ExamEntry) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     await Clipboard.setStringAsync(`${e.courseCode} — ${e.courseName}\n${e.date} · ${e.time}`);
+  };
+
+  // Server-rendered PNG export (identical layout to the website's export).
+  const [exporting, setExporting] = useState(false);
+  const onExport = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setExporting(true);
+    try {
+      const uri = await exportExamsPng(filtered, {
+        subtitle: `BS(${effectiveDept}) · Batch ${effectiveBatch}`,
+        semesterName: semesterName ?? undefined,
+      });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share exam schedule' });
+      }
+    } catch (e) {
+      console.error('Export failed:', e);
+    } finally {
+      setExporting(false);
+    }
   };
 
   // Visibility gate (admin-controlled): show placeholder while exams are hidden.
@@ -206,7 +230,17 @@ export default function ExamsScreen() {
         </View>
 
         {/* Results */}
-        <SectionHeader title={`${filtered.length} exam${filtered.length === 1 ? '' : 's'}`} />
+        <SectionHeader
+          title={`${filtered.length} exam${filtered.length === 1 ? '' : 's'}`}
+          right={
+            filtered.length > 0 ? (
+              <Pressable onPress={onExport} style={styles.exportBtn} disabled={exporting}>
+                <Ionicons name="share-outline" size={16} color={colors.brand} />
+                <Text style={styles.exportText}>{exporting ? 'Exporting…' : 'Export'}</Text>
+              </Pressable>
+            ) : null
+          }
+        />
 
         {filtered.length === 0 ? (
           <EmptyState icon="search-outline" title="No exams found" message="Try a different batch, department or search term." />
@@ -374,4 +408,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   customTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
   customDesc: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.brand },
+  exportText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
 });

@@ -211,7 +211,6 @@ function ChipLocal({ label, active, onPress }: { label: string; active: boolean;
 
 function RoomGroups({ groups }: { groups: Record<string, string[]> }) {
   const styles = useStyles(makeStyles);
-  const { colors } = useTheme();
   return (
     <>
       {Object.entries(groups).map(([block, rooms]) => (

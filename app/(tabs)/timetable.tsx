@@ -1,5 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -8,18 +10,26 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
-import { captureRef } from 'react-native-view-shot';
-import { deptAccent, deptAccentBg } from '@/theme/colors';
+import { deptAccent } from '@/theme/colors';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { usePref } from '@/hooks/usePref';
-import { fetchFSCTimetable, fetchFSMTimetable } from '@/api/endpoints';
+import { fetchExamVisibility, fetchFSCTimetable, fetchFSMTimetable, type ExamVisibility } from '@/api/endpoints';
+import { exportTimetablePng } from '@/api/exportImage';
 import { CACHE_TTL, PREF_KEYS } from '@/api/config';
+import {
+  clearSavedSchedule,
+  describeSavedSchedule,
+  getSavedSchedule,
+  setSavedSchedule,
+  type SavedSchedule,
+} from '@/prefs/savedSchedule';
 import {
   filterTimetable,
   flattenTimetable,
@@ -28,12 +38,31 @@ import {
   getAvailableDepartments,
   getAvailableSections,
   groupByDayTimetable,
+  makeKey,
 } from '@/core/timetable';
 import { type RawTimetableJSON, type TimetableEntry } from '@/core/types';
+import { ScheduleGrid } from '@/components/ScheduleGrid';
 import { Chip, EmptyState, ErrorState, LoadingState, OfflineNotice, SectionHeader } from '@/components/ui';
 
 const TODAY = new Date().toLocaleString('en', { weekday: 'long' });
 type ViewMode = 'list' | 'grid';
+
+/** Course identity for section-choice: same course (dept+category+name) across sections. */
+function courseKeyOf(e: Pick<TimetableEntry, 'department' | 'category' | 'courseName'>): string {
+  return `${e.department}|${e.category}|${e.courseName}`;
+}
+
+function isDeptMatch(entryDept: string, filterDept: string): boolean {
+  if (entryDept === filterDept) return true;
+  return entryDept.split('/').map((d) => d.trim()).includes(filterDept);
+}
+
+interface ResultPrefs {
+  sectionByCourse: Record<string, string>;
+  /** `${courseKey}|${section}` — electives/repeats the user picked into view. */
+  pickedElectives: string[];
+}
+const EMPTY_PREFS: ResultPrefs = { sectionByCourse: {}, pickedElectives: [] };
 
 export default function TimetableScreen() {
   const styles = useStyles(makeStyles);
@@ -47,11 +76,44 @@ export default function TimetableScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [exporting, setExporting] = useState(false);
 
-  const scheduleRef = useRef<View>(null);
+  // ── Saved-preference tag ────────────────────────────────────────────────────
+  const [saved, setSaved] = useState<SavedSchedule | null>(null);
+  const [savedBundleName, setSavedBundleName] = useState<string | null>(null);
 
+  const reloadSaved = useCallback(async () => {
+    const s = await getSavedSchedule();
+    setSaved(s);
+    if (s?.kind === 'bundle') {
+      try {
+        const raw = await AsyncStorage.getItem('custom:timetable_bundles');
+        const list = raw ? (JSON.parse(raw) as { id: string; name: string }[]) : [];
+        setSavedBundleName(list.find((b) => b.id === s.bundleId)?.name ?? null);
+      } catch {
+        setSavedBundleName(null);
+      }
+    } else {
+      setSavedBundleName(null);
+    }
+  }, []);
+
+  // Reload the tag whenever the tab gains focus (it may change on other screens).
+  useFocusEffect(
+    useCallback(() => {
+      reloadSaved();
+    }, [reloadSaved])
+  );
+
+  // ── Data ────────────────────────────────────────────────────────────────────
   const fetcher = school === 'FSM' ? fetchFSMTimetable : fetchFSCTimetable;
   const { data: raw, isLoading, isFromCache, isRefreshing, error, refresh } =
     useCachedData<RawTimetableJSON>(`data:timetable:${school}`, fetcher, CACHE_TTL.timetable);
+
+  const { data: visibility } = useCachedData<ExamVisibility>(
+    'data:exam_visibility',
+    fetchExamVisibility,
+    CACHE_TTL.schedule
+  );
+  const semesterName = visibility?.semester_name ?? undefined;
 
   const entries = useMemo(() => (raw ? flattenTimetable(raw) : []), [raw]);
 
@@ -66,27 +128,235 @@ export default function TimetableScreen() {
   const effDept = effectiveDept(departments, dept);
   const effSection = sections.includes(section) ? section : sections[0] ?? '';
 
+  // Auto-display the tagged default configuration (vii): when the tag points at
+  // a default batch/dept/section, the timetable opens onto exactly that.
+  useEffect(() => {
+    if (saved?.kind !== 'default') return;
+    if (saved.school && saved.school !== school) setSchool(saved.school);
+    if (saved.batch) setBatch(saved.batch);
+    if (saved.dept) setDept(saved.dept);
+    if (saved.section) setSection(saved.section);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saved]);
+
+  // ── Per-course section choice + picked electives (persisted per scope) ──────
+  const scopeKey = `${school}:${effBatch}:${effDept}:${effSection}`;
+  const [resultPrefs, setResultPrefs] = useState<ResultPrefs>(EMPTY_PREFS);
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(`pref:resultprefs:${scopeKey}`)
+      .then((rawData) => {
+        if (!active) return;
+        if (rawData) {
+          try {
+            const parsed = JSON.parse(rawData);
+            setResultPrefs({
+              sectionByCourse: parsed.sectionByCourse ?? {},
+              pickedElectives: parsed.pickedElectives ?? [],
+            });
+            return;
+          } catch {
+            /* fall through */
+          }
+        }
+        setResultPrefs(EMPTY_PREFS);
+      })
+      .catch(() => {
+        if (active) setResultPrefs(EMPTY_PREFS);
+      });
+    return () => {
+      active = false;
+    };
+  }, [scopeKey]);
+
+  const updateResultPrefs = useCallback(
+    (next: ResultPrefs) => {
+      setResultPrefs(next);
+      AsyncStorage.setItem(`pref:resultprefs:${scopeKey}`, JSON.stringify(next)).catch(() => {});
+    },
+    [scopeKey]
+  );
+
+  // ── Course-section model ────────────────────────────────────────────────────
+  // Base: courses visible in the user's own section (normalized A1/A2 → A).
+  const baseEntries = useMemo(
+    () =>
+      filterTimetable(entries, {
+        batch: effBatch,
+        department: effDept,
+        section: effSection,
+        query: '',
+      }),
+    [entries, effBatch, effDept, effSection]
+  );
+
+  const defaultSectionByCourse = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const e of baseEntries) {
+      const key = courseKeyOf(e);
+      if (!map.has(key)) map.set(key, e.section);
+    }
+    return map;
+  }, [baseEntries]);
+
+  // All sections a course runs in (any section, same batch+dept, non-elective, non-repeat).
+  const courseSectionsByKey = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const e of entries) {
+      if (e.batch !== effBatch || !isDeptMatch(e.department, effDept)) continue;
+      if (e.isElective || e.category === 'repeat') continue;
+      const key = courseKeyOf(e);
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key)!.add(e.section);
+    }
+    const sorted = new Map<string, string[]>();
+    for (const [key, set] of map) {
+      if (set.size > 1) {
+        sorted.set(key, [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })));
+      }
+    }
+    return sorted;
+  }, [entries, effBatch, effDept]);
+
+  // Chosen section per course (manual override or the user's own-section default).
+  const effectiveSectionFor = useCallback(
+    (key: string): string | undefined =>
+      resultPrefs.sectionByCourse[key] ?? defaultSectionByCourse.get(key),
+    [resultPrefs.sectionByCourse, defaultSectionByCourse]
+  );
+
+  // ── Electives / Others model ────────────────────────────────────────────────
+  const electivesCtx = useMemo(
+    () =>
+      entries.filter(
+        (e) =>
+          e.batch === effBatch &&
+          isDeptMatch(e.department, effDept) &&
+          (e.isElective || e.category === 'repeat')
+      ),
+    [entries, effBatch, effDept]
+  );
+
+  const electiveGroups = useMemo(() => {
+    const map = new Map<string, { key: string; courseName: string; category: string; sections: Set<string> }>();
+    for (const e of electivesCtx) {
+      const key = courseKeyOf(e);
+      if (!map.has(key)) map.set(key, { key, courseName: e.courseName, category: e.category, sections: new Set() });
+      map.get(key)!.sections.add(e.section);
+    }
+    return [...map.values()]
+      .map((g) => ({
+        ...g,
+        sections: [...g.sections].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+      }))
+      .sort((a, b) => a.courseName.localeCompare(b.courseName));
+  }, [electivesCtx]);
+
+  // ── Displayed schedule ──────────────────────────────────────────────────────
+  const displayed = useMemo(() => {
+    const out: TimetableEntry[] = [];
+    const seen = new Set<string>();
+    // Main: chosen section per course.
+    for (const e of entries) {
+      if (e.batch !== effBatch || !isDeptMatch(e.department, effDept)) continue;
+      if (e.isElective || e.category === 'repeat') continue;
+      const key = courseKeyOf(e);
+      const chosen = effectiveSectionFor(key);
+      if (chosen == null || e.section !== chosen) continue;
+      const k = makeKey(e);
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(e);
+      }
+    }
+    // Picked electives/repeats.
+    for (const e of electivesCtx) {
+      const pickKey = `${courseKeyOf(e)}|${e.section}`;
+      if (!resultPrefs.pickedElectives.includes(pickKey)) continue;
+      const k = makeKey(e);
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(e);
+      }
+    }
+    return out;
+  }, [entries, effBatch, effDept, electivesCtx, effectiveSectionFor, resultPrefs.pickedElectives]);
+
   const filtered = useMemo(() => {
-    if (!entries.length) return [];
-    return filterTimetable(entries, {
-      batch: effBatch,
-      department: effDept,
-      section: effSection,
-      query,
-    });
-  }, [entries, effBatch, effDept, effSection, query]);
+    const q = query.toLowerCase().trim();
+    if (!q) return displayed;
+    return displayed.filter(
+      (e) =>
+        e.courseName.toLowerCase().includes(q) ||
+        e.room.toLowerCase().includes(q) ||
+        e.section.toLowerCase().includes(q)
+    );
+  }, [displayed, query]);
 
   const grouped = useMemo(() => groupByDayTimetable(filtered), [filtered]);
 
+  const pickedElectiveKeys = useMemo(() => new Set(resultPrefs.pickedElectives), [resultPrefs.pickedElectives]);
+
+  // ── Actions ─────────────────────────────────────────────────────────────────
+  const chooseCourseSection = (key: string, nextSection: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    const next = { ...resultPrefs.sectionByCourse };
+    const def = defaultSectionByCourse.get(key);
+    if (def === nextSection) delete next[key];
+    else next[key] = nextSection;
+    updateResultPrefs({ ...resultPrefs, sectionByCourse: next });
+  };
+
+  const toggleElective = (key: string, sec: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    const pickKey = `${key}|${sec}`;
+    const next = resultPrefs.pickedElectives.includes(pickKey)
+      ? resultPrefs.pickedElectives.filter((p) => p !== pickKey)
+      : [...resultPrefs.pickedElectives, pickKey];
+    updateResultPrefs({ ...resultPrefs, pickedElectives: next });
+  };
+
+  /** Tag the current configuration as "my timetable" — enforcing the single-tag rule. */
+  const onTagDefault = () => {
+    Haptics.selectionAsync().catch(() => {});
+    if (saved) {
+      const holder = describeSavedSchedule(saved, savedBundleName ?? undefined);
+      Alert.alert(
+        'Saved preference already set',
+        `Your saved preference is currently on ${holder}. Remove it there first, then tag this configuration.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove current tag',
+            style: 'destructive',
+            onPress: async () => {
+              await clearSavedSchedule();
+              await reloadSaved();
+            },
+          },
+        ]
+      );
+      return;
+    }
+    setSavedSchedule({ kind: 'default', school, batch: effBatch, dept: effDept, section: effSection }).then(reloadSaved);
+  };
+
+  const onRemoveTag = () => {
+    Haptics.selectionAsync().catch(() => {});
+    clearSavedSchedule().then(reloadSaved);
+  };
+
+  // Server-rendered PNG export (identical layout to the website's export).
   const onExport = async () => {
-    if (!scheduleRef.current) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setExporting(true);
     try {
-      const uri = await captureRef(scheduleRef, {
-        format: 'png',
-        quality: 1,
-        result: 'tmpfile',
+      const uri = await exportTimetablePng(filtered, {
+        batch: effBatch,
+        dept: effDept,
+        section: effSection,
+        semesterName,
       });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share timetable' });
@@ -100,6 +370,13 @@ export default function TimetableScreen() {
 
   if (isLoading) return <LoadingState label="Loading timetable…" />;
   if (!raw || error) return <ErrorState message={error ?? undefined} onRetry={refresh} />;
+
+  const isCurrentTagged =
+    saved?.kind === 'default' &&
+    saved.school === school &&
+    saved.batch === effBatch &&
+    saved.dept === effDept &&
+    saved.section === effSection;
 
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
@@ -125,6 +402,43 @@ export default function TimetableScreen() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
         </Pressable>
+
+        {/* Saved-preference tag */}
+        {saved?.kind === 'bundle' ? (
+          <Pressable
+            onPress={() => router.push('/custom-timetable')}
+            android_ripple={{ color: colors.border }}
+            style={({ pressed }) => [styles.savedCard, pressed && { opacity: 0.85 }]}
+          >
+            <Ionicons name="bookmark" size={16} color={colors.brand} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.savedText}>
+                My timetable: bundle “{savedBundleName ?? 'Custom'}”
+              </Text>
+              <Text style={styles.savedHint}>Shown in Custom Timetable · tap to open</Text>
+            </View>
+            <Pressable onPress={onRemoveTag} hitSlop={8}>
+              <Text style={styles.savedRemove}>Remove</Text>
+            </Pressable>
+          </Pressable>
+        ) : isCurrentTagged ? (
+          <View style={styles.savedCard}>
+            <Ionicons name="bookmark" size={16} color={colors.brand} />
+            <Text style={[styles.savedText, { flex: 1 }]}>My timetable — opens here automatically</Text>
+            <Pressable onPress={onRemoveTag} hitSlop={8}>
+              <Text style={styles.savedRemove}>Remove</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            onPress={onTagDefault}
+            android_ripple={{ color: colors.border }}
+            style={({ pressed }) => [styles.tagBtn, pressed && { opacity: 0.85 }]}
+          >
+            <Ionicons name="bookmark-outline" size={16} color={colors.brand} />
+            <Text style={styles.tagBtnText}>Save this configuration as my timetable</Text>
+          </Pressable>
+        )}
 
         {isFromCache ? (
           <View style={{ marginTop: 12 }}>
@@ -208,26 +522,71 @@ export default function TimetableScreen() {
 
         {filtered.length === 0 ? (
           <EmptyState icon="calendar-outline" title="No classes found" message="Adjust your batch, department, section or search term." />
+        ) : viewMode === 'list' ? (
+          grouped.map((g) => (
+            <View key={g.day} style={{ marginBottom: 12 }}>
+              <View style={styles.dayHeader}>
+                <Text style={styles.dayName}>{g.day}</Text>
+                {g.day === TODAY ? <View style={styles.todayBadge}><Text style={styles.todayText}>TODAY</Text></View> : null}
+                <Text style={styles.dayCount}>{g.entries.length} classes</Text>
+              </View>
+              {g.entries.map((e, i) => {
+                const key = courseKeyOf(e);
+                const options = courseSectionsByKey.get(key) ?? [];
+                const isPickedElective = pickedElectiveKeys.has(`${key}|${e.section}`);
+                return (
+                  <ClassRow
+                    key={`${e.courseName}-${e.room}-${i}`}
+                    entry={e}
+                    sectionOptions={options}
+                    isElectivePick={isPickedElective}
+                    onChooseSection={(sec) => chooseCourseSection(key, sec)}
+                  />
+                );
+              })}
+            </View>
+          ))
         ) : (
-          <View ref={scheduleRef} collapsable={false} style={styles.scheduleArea}>
-            {viewMode === 'list' ? (
-              grouped.map((g) => (
-                <View key={g.day} style={{ marginBottom: 12 }}>
-                  <View style={styles.dayHeader}>
-                    <Text style={styles.dayName}>{g.day}</Text>
-                    {g.day === TODAY ? <View style={styles.todayBadge}><Text style={styles.todayText}>TODAY</Text></View> : null}
-                    <Text style={styles.dayCount}>{g.entries.length} classes</Text>
-                  </View>
-                  {g.entries.map((e, i) => (
-                    <ClassRow key={`${e.courseName}-${e.room}-${i}`} entry={e} />
-                  ))}
-                </View>
-              ))
-            ) : (
-              <GridSchedule grouped={grouped} />
-            )}
-          </View>
+          <ScheduleGrid grouped={grouped} todayName={TODAY} />
         )}
+
+        {/* Electives / Others */}
+        {electiveGroups.length > 0 ? (
+          <>
+            <SectionHeader title="Electives / Others" />
+            <Text style={styles.electivesHint}>
+              Pick elective or repeat courses into your schedule — choose the section that suits you.
+            </Text>
+            {electiveGroups.map((g) => (
+              <View key={g.key} style={styles.electiveCard}>
+                <View style={styles.electiveTopRow}>
+                  <Text style={styles.electiveName}>{g.courseName}</Text>
+                  <View style={[styles.electiveBadge, g.category === 'repeat' ? styles.repeatBadge : styles.electiveBadgeBg]}>
+                    <Text style={[styles.electiveBadgeText, g.category === 'repeat' ? styles.repeatBadgeText : styles.electiveBadgeTextColor]}>
+                      {g.category === 'repeat' ? 'REPEAT' : 'ELECTIVE'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.electiveSections}>
+                  {g.sections.map((sec) => {
+                    const picked = pickedElectiveKeys.has(`${g.key}|${sec}`);
+                    return (
+                      <Pressable
+                        key={sec}
+                        onPress={() => toggleElective(g.key, sec)}
+                        style={[styles.electiveSectionChip, picked && { backgroundColor: colors.brand, borderColor: colors.brand }]}
+                      >
+                        <Text style={[styles.electiveSectionText, picked && { color: colors.onBrand }]}>
+                          {sec}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
+          </>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -240,11 +599,23 @@ function effectiveDept(depts: string[], current: string): string {
   return depts.includes(current) ? current : depts[0] ?? '';
 }
 
-function ClassRow({ entry }: { entry: TimetableEntry }) {
+function ClassRow({
+  entry,
+  sectionOptions,
+  isElectivePick,
+  onChooseSection,
+}: {
+  entry: TimetableEntry;
+  sectionOptions: string[];
+  isElectivePick?: boolean;
+  onChooseSection?: (section: string) => void;
+}) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
+  const [pickerOpen, setPickerOpen] = useState(false);
   const isLab = entry.type === 'lab';
   const cancelled = entry.cancelled;
+
   return (
     <View style={[styles.classCard, cancelled && { opacity: 0.5 }]}>
       <View style={styles.classTime}>
@@ -260,6 +631,11 @@ function ClassRow({ entry }: { entry: TimetableEntry }) {
               <Text style={[styles.typeBadgeText, { color: colors.info }]}>LAB</Text>
             </View>
           ) : null}
+          {isElectivePick ? (
+            <View style={[styles.typeBadge, { backgroundColor: colors.successBg }]}>
+              <Text style={[styles.typeBadgeText, { color: colors.success }]}>PICKED</Text>
+            </View>
+          ) : null}
           {cancelled ? (
             <View style={[styles.typeBadge, { backgroundColor: colors.dangerBg }]}>
               <Text style={[styles.typeBadgeText, { color: colors.danger }]}>CANCELLED</Text>
@@ -269,54 +645,53 @@ function ClassRow({ entry }: { entry: TimetableEntry }) {
         <View style={styles.classMetaRow}>
           <Ionicons name="location-outline" size={13} color={colors.textSecondary} />
           <Text style={styles.classMeta}>Room {entry.room}</Text>
-          <Text style={styles.classMeta}>·</Text>
-          <Text style={styles.classMeta}>Sec {entry.section}</Text>
         </View>
       </View>
+      {sectionOptions.length > 1 && onChooseSection ? (
+        <>
+          <Pressable
+            onPress={() => setPickerOpen(true)}
+            hitSlop={6}
+            style={({ pressed }) => [styles.secChip, pressed && { opacity: 0.75 }]}
+          >
+            <Text style={styles.secChipText}>Sec {entry.section}</Text>
+            <Ionicons name="chevron-down" size={13} color={colors.brand} />
+          </Pressable>
+
+          <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+            <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)}>
+              <Pressable style={styles.pickerSheet} onPress={() => {}}>
+                <View style={styles.pickerHandle} />
+                <Text style={styles.pickerTitle} numberOfLines={1}>
+                  {entry.courseName} — SECTION
+                </Text>
+                {sectionOptions.map((sec) => {
+                  const active = sec === entry.section;
+                  return (
+                    <Pressable
+                      key={sec}
+                      onPress={() => {
+                        onChooseSection(sec);
+                        setPickerOpen(false);
+                      }}
+                      style={({ pressed }) => [styles.pickerOption, pressed && { opacity: 0.7 }]}
+                    >
+                      <Text style={[styles.pickerOptionText, active && { color: colors.brand, fontWeight: '700' }]}>
+                        Section {sec}
+                      </Text>
+                      {active ? <Ionicons name="checkmark" size={18} color={colors.brand} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </Pressable>
+            </Pressable>
+          </Modal>
+        </>
+      ) : (
+        <Text style={styles.secStatic}>Sec {entry.section}</Text>
+      )}
     </View>
   );
-}
-
-/** Horizontal day-column grid view. */
-function GridSchedule({ grouped }: { grouped: { day: string; entries: TimetableEntry[] }[] }) {
-  const styles = useStyles(makeStyles);
-  const { colors } = useTheme();
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View style={styles.gridRow}>
-        {grouped.map((g) => (
-          <View key={g.day} style={[styles.gridCol, g.day === TODAY && styles.gridColToday]}>
-            <View style={styles.gridDayHeader}>
-              <Text style={styles.gridDayName}>{g.day.slice(0, 3).toUpperCase()}</Text>
-              {g.day === TODAY ? <Text style={styles.gridTodayText}>TODAY</Text> : null}
-            </View>
-            {g.entries.map((e, i) => (
-              <View
-                key={`${e.courseName}-${e.room}-${i}`}
-                style={[
-                  styles.gridCell,
-                  { backgroundColor: deptAccentBg[deptKeyOf(e)] ?? colors.subtle, borderLeftColor: deptAccent[deptKeyOf(e)] ?? colors.brand },
-                ]}
-              >
-                <Text style={styles.gridCellCourse} numberOfLines={2}>
-                  {e.courseName}
-                </Text>
-                <Text style={styles.gridCellTime}>{formatTimeRange(e.time)}</Text>
-                <Text style={styles.gridCellRoom} numberOfLines={1}>
-                  {e.room}
-                </Text>
-              </View>
-            ))}
-            {g.entries.length === 0 ? <Text style={styles.gridEmpty}>—</Text> : null}
-          </View>
-        ))}
-      </View>
-    </ScrollView>
-  );
-}
-
-function deptKeyOf(e: TimetableEntry): string {
-  return e.department.split('/')[0];
 }
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
@@ -350,6 +725,34 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   customIcon: { width: 40, height: 40, borderRadius: 11, backgroundColor: colors.infoBg, alignItems: 'center', justifyContent: 'center' },
   customTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
   customDesc: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  savedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.infoBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.brand,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+  },
+  savedText: { fontSize: 13, fontWeight: '700', color: colors.brand },
+  savedHint: { fontSize: 11, color: colors.textSecondary, marginTop: 1 },
+  savedRemove: { fontSize: 13, fontWeight: '700', color: colors.danger },
+  tagBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.brand,
+    borderStyle: 'dashed',
+    marginTop: 12,
+  },
+  tagBtnText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
   viewModeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 10 },
   segmented: { flexDirection: 'row', backgroundColor: colors.subtle, borderRadius: 10, padding: 3 },
   segment: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8 },
@@ -357,7 +760,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   segmentText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
   exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.brand },
   exportText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
-  scheduleArea: { backgroundColor: colors.bg },
   dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, paddingTop: 4 },
   dayName: { fontSize: 16, fontWeight: '700', color: colors.text },
   dayCount: { fontSize: 12, color: colors.textTertiary },
@@ -381,20 +783,78 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   typeBadgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
   classMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   classMeta: { fontSize: 12, color: colors.textSecondary },
-  gridRow: { flexDirection: 'row', gap: 8 },
-  gridCol: { width: 148, borderRadius: 12, paddingBottom: 8 },
-  gridColToday: { backgroundColor: colors.infoBg },
-  gridDayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, paddingHorizontal: 4 },
-  gridDayName: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, letterSpacing: 0.5 },
-  gridTodayText: { fontSize: 9, fontWeight: '800', color: colors.brand },
-  gridCell: {
-    borderRadius: 10,
-    borderLeftWidth: 3,
-    padding: 10,
-    marginBottom: 6,
+  secChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    alignSelf: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.brand,
   },
-  gridCellCourse: { fontSize: 12, fontWeight: '700', color: colors.text },
-  gridCellTime: { fontSize: 10, color: colors.textSecondary, marginTop: 3 },
-  gridCellRoom: { fontSize: 10, color: colors.textSecondary, marginTop: 2 },
-  gridEmpty: { textAlign: 'center', color: colors.textTertiary, paddingVertical: 12 },
+  secChipText: { fontSize: 12, fontWeight: '700', color: colors.brand },
+  secStatic: { alignSelf: 'center', fontSize: 12, fontWeight: '600', color: colors.textTertiary, marginLeft: 6 },
+  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  pickerSheet: {
+    backgroundColor: colors.raised,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 28,
+  },
+  pickerHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderStrong,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  pickerTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 1,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  pickerOptionText: { fontSize: 15, color: colors.text },
+  electivesHint: { fontSize: 13, color: colors.textSecondary, marginTop: -4, marginBottom: 10 },
+  electiveCard: {
+    backgroundColor: colors.raised,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    padding: 12,
+    marginBottom: 8,
+  },
+  electiveTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  electiveName: { fontSize: 14, fontWeight: '700', color: colors.text, flex: 1 },
+  electiveBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+  electiveBadgeBg: { backgroundColor: colors.infoBg },
+  repeatBadge: { backgroundColor: colors.warningBg },
+  electiveBadgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+  electiveBadgeTextColor: { color: colors.info },
+  repeatBadgeText: { color: colors.warning },
+  electiveSections: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  electiveSectionChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.raised,
+  },
+  electiveSectionText: { fontSize: 13, fontWeight: '600', color: colors.text },
 });
