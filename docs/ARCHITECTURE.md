@@ -95,9 +95,16 @@ change `EXPO_PUBLIC_API_BASE_URL` — no code change required.
 `src/hooks/useCachedData.ts` implements **stale-while-revalidate**:
 
 1. Read from AsyncStorage → render immediately (offline-capable).
-2. If the cache is fresh (within TTL), stop.
+2. If the cache is fresh (within TTL), stop on mount.
 3. Otherwise re-fetch in the background and update the cache.
 4. On network failure, keep the cached copy and show a "cached data" notice.
+
+**Automatic refresh:** beyond the mount-time fetch, the hook revalidates in the
+background whenever the screen regains focus or the app returns to the
+foreground (throttled to once per minute via `minRevalidateIntervalMs`). This
+means a daily timetable/exam update is picked up and persisted to AsyncStorage
+automatically as the user opens the app or switches back to a tab — no manual
+pull-to-refresh required. Pull-to-refresh still exists as an explicit force.
 
 TTLs are defined in `src/api/config.ts`. Dynamic/user-generated data (none in the
 core feature set) would not be cached this way.

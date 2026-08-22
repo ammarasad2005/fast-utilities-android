@@ -217,6 +217,8 @@ app.json             # Expo + Android config
 
 Cached data is served immediately (works offline) and revalidated in the background. When the UI is showing cached data it displays an explicit **"Showing cached data"** notice so it never pretends to be live. User selections (school, batch, department, section) are persisted locally.
 
+**Auto-refresh:** the app revalidates cached data in the background every time a screen regains focus or the app returns to the foreground (throttled to once a minute), so updated timetables/exams are fetched and persisted automatically — no manual pull-to-refresh needed.
+
 ---
 
 ## Backend / data compatibility
