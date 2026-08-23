@@ -23,8 +23,8 @@ import { usePref } from '@/hooks/usePref';
 import { fetchExamVisibility, fetchFSCTimetable, fetchFSMTimetable, fetchSemesterCalendar, type ExamVisibility } from '@/api/endpoints';
 import { exportTimetablePng } from '@/api/exportImage';
 import { CACHE_TTL, PREF_KEYS } from '@/api/config';
-import { formatISODateShort, getEffectiveToday, isTomorrowPreview } from '@/core/dates';
-import { isBeforeSemesterStart } from '@/core/semester';
+import { getSemesterStartDate } from '@/core/semester';
+import { attachEntries, resolveWeekPlan } from '@/core/weekPlan';
 import {
   clearSavedSchedule,
   describeSavedSchedule,
@@ -42,7 +42,8 @@ import {
   groupByDayTimetable,
   makeKey,
 } from '@/core/timetable';
-import { DAYS_ORDER, TIMETABLE_META_KEY, type RawTimetableJSON, type SemesterCalendar, type TimetableEntry } from '@/core/types';
+import { TIMETABLE_META_KEY, type RawTimetableJSON, type SemesterCalendar, type TimetableEntry } from '@/core/types';
+import { DaySection } from '@/components/DaySection';
 import { WeekGrid, type WeekGridDay } from '@/components/WeekGrid';
 import { Chip, EmptyState, ErrorState, LoadingState, OfflineNotice, SectionHeader } from '@/components/ui';
 
@@ -303,37 +304,36 @@ export default function TimetableScreen() {
 
   const grouped = useMemo(() => groupByDayTimetable(filtered), [filtered]);
 
-  // Dates per day come from the sheet metadata embedded in the timetable JSON
-  // (__meta__.days → {day, isoDate}), like the web app / export. Combined with
-  // the web's "effective today" rule the app can stamp TODAY / TOMORROW.
-  const dateByDay = useMemo(() => {
-    const map = new Map<string, string>();
-    const metaDays = raw?.[TIMETABLE_META_KEY]?.days;
-    if (metaDays) for (const d of metaDays) if (d.isoDate) map.set(d.day, d.isoDate);
-    return map;
-  }, [raw]);
+  // Full week resolution, exactly as the web app does it: dates are rolled
+  // onto the calendar week containing the EFFECTIVE today (never the stale
+  // sheet-generation dates), Monday clamped to semester start, makeup sheets
+  // parsed out, today pinned first (suppressed before the semester starts).
+  const weekPlan = useMemo(
+    () =>
+      resolveWeekPlan(raw?.[TIMETABLE_META_KEY]?.days, {
+        semesterStartISO: getSemesterStartDate(calendar ?? null),
+      }),
+    [raw, calendar]
+  );
 
-  // Effective (today|tomorrow) per web rules: after 5:30 PM we preview tomorrow,
-  // and the highlight is suppressed before the semester has started.
-  const effective = getEffectiveToday();
-  const tomorrowPreview = isTomorrowPreview();
-  const highlightSuppressed = isBeforeSemesterStart(calendar ?? null);
-  const isEffectiveDay = (dayName: string): boolean => {
-    if (highlightSuppressed) return false;
-    const iso = dateByDay.get(dayName);
-    return iso ? iso === effective.isoDate : dayName === effective.dayName;
-  };
+  // Today-first ordering; the today day survives even with no classes (so the
+  // app can say "No classes scheduled for today" like the web does).
+  const dayItems = useMemo(
+    () => attachEntries(weekPlan, new Map(grouped.map((g) => [g.day, g.entries]))),
+    [weekPlan, grouped]
+  );
 
-  const gridDays = useMemo<WeekGridDay[]>(() => {
-    const byDay = new Map(grouped.map((g) => [g.day, g.entries]));
-    return DAYS_ORDER.map((d) => ({
-      dayName: d,
-      isoDate: dateByDay.get(d),
-      entries: byDay.get(d) ?? [],
-      badge: isEffectiveDay(d) ? (tomorrowPreview ? 'tomorrow' : 'today') : null,
-    }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grouped, dateByDay, highlightSuppressed, tomorrowPreview, effective.isoDate, effective.dayName]);
+  const gridDays = useMemo<WeekGridDay[]>(
+    () =>
+      dayItems.map((s) => ({
+        dayName: s.day,
+        sheetName: s.sheetName,
+        isoDate: s.isoDate,
+        entries: s.entries,
+        badge: s.isToday ? (weekPlan.tomorrowPreview ? 'tomorrow' : 'today') : null,
+      })),
+    [dayItems, weekPlan.tomorrowPreview]
+  );
 
   const pickedElectiveKeys = useMemo(() => new Set(resultPrefs.pickedElectives), [resultPrefs.pickedElectives]);
 
@@ -562,21 +562,16 @@ export default function TimetableScreen() {
         {filtered.length === 0 ? (
           <EmptyState icon="calendar-outline" title="No classes found" message="Adjust your batch, department, section or search term." />
         ) : viewMode === 'list' ? (
-          grouped.map((g) => (
-            <View key={g.day} style={{ marginBottom: 12 }}>
-              <View style={styles.dayHeader}>
-                <Text style={styles.dayName}>{g.day}</Text>
-                {dateByDay.get(g.day) ? (
-                  <Text style={styles.dayDate}>{formatISODateShort(dateByDay.get(g.day)!)}</Text>
-                ) : null}
-                {isEffectiveDay(g.day) ? (
-                  <View style={styles.todayBadge}>
-                    <Text style={styles.todayText}>{tomorrowPreview ? 'TOMORROW' : 'TODAY'}</Text>
-                  </View>
-                ) : null}
-                <Text style={styles.dayCount}>{g.entries.length} classes</Text>
-              </View>
-              {g.entries.map((e, i) => {
+          dayItems.map((s) => (
+            <DaySection
+              key={s.sheetName}
+              dayName={s.day}
+              dateStr={s.dateStr}
+              isMakeup={s.isMakeup}
+              badge={s.isToday ? (weekPlan.tomorrowPreview ? 'tomorrow' : 'today') : null}
+              classCount={s.entries.length}
+            >
+              {s.entries.map((e, i) => {
                 const key = courseKeyOf(e);
                 const options = courseSectionsByKey.get(key) ?? [];
                 const isPickedElective = pickedElectiveKeys.has(`${key}|${e.section}`);
@@ -590,7 +585,7 @@ export default function TimetableScreen() {
                   />
                 );
               })}
-            </View>
+            </DaySection>
           ))
         ) : (
           <WeekGrid days={gridDays} />
@@ -806,12 +801,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   segmentText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
   exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.brand },
   exportText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
-  dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, paddingTop: 4 },
-  dayName: { fontSize: 16, fontWeight: '700', color: colors.text },
-  dayDate: { fontSize: 12, fontWeight: '600', color: colors.textTertiary },
-  dayCount: { fontSize: 12, color: colors.textTertiary },
-  todayBadge: { backgroundColor: colors.brand, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  todayText: { color: colors.onBrand, fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
   classCard: {
     flexDirection: 'row',
     backgroundColor: colors.raised,

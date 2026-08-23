@@ -32,6 +32,8 @@ const HOUR_MARKERS = [
 
 export interface WeekGridDay {
   dayName: string; // 'Monday'
+  /** Column key — sheet name when available (makeup days can repeat a dayName). */
+  sheetName?: string;
   isoDate?: string; // '2026-08-17'
   entries: TimetableEntry[];
   /** 'today' | 'tomorrow' | null — badge to show on this column. */
@@ -50,12 +52,27 @@ export function WeekGrid({ days }: { days: WeekGridDay[] }) {
           <View style={{ width: TIME_COL_WIDTH }} />
           {days.map((d) => (
             <View
-              key={d.dayName}
-              style={[styles.dayHeader, d.badge ? { backgroundColor: colors.infoBg } : null]}
+              key={d.sheetName ?? d.dayName}
+              style={[
+                styles.dayHeader,
+                d.badge ? {
+                  backgroundColor: colors.infoBg,
+                  borderTopWidth: 2,
+                  borderLeftWidth: 2,
+                  borderRightWidth: 2,
+                  borderColor: colors.brand,
+                  borderBottomWidth: 2,
+                  borderBottomColor: colors.brand,
+                } : null,
+              ]}
             >
-              <Text style={styles.dayHeaderText}>
+              <Text style={[styles.dayHeaderText, d.badge ? { fontWeight: '800', color: colors.text } : null]}>
                 {d.dayName.slice(0, 3).toUpperCase()}
-                {d.isoDate ? <Text style={styles.dayHeaderDate}>{`  ${formatISODateShort(d.isoDate)}`}</Text> : null}
+                {d.isoDate ? (
+                  <Text style={[styles.dayHeaderDate, d.badge ? { fontWeight: '700', color: colors.text } : null]}>
+                    {`  ${formatISODateShort(d.isoDate)}`}
+                  </Text>
+                ) : null}
               </Text>
               {d.badge ? (
                 <Text style={styles.dayHeaderBadge}>{d.badge === 'today' ? 'TODAY' : 'TOMORROW'}</Text>
@@ -81,8 +98,20 @@ export function WeekGrid({ days }: { days: WeekGridDay[] }) {
           {/* Day columns */}
           {days.map((d) => (
             <View
-              key={d.dayName}
-              style={[styles.dayCol, { width: DAY_COL_WIDTH }, d.badge ? { backgroundColor: colors.infoBg } : null]}
+              key={d.sheetName ?? d.dayName}
+              style={[
+                styles.dayCol,
+                { width: DAY_COL_WIDTH },
+                d.badge ? {
+                  // The web's "boundary covering": a visible border framing the
+                  // whole today/tomorrow column (header above supplies the top edge)
+                  backgroundColor: colors.infoBg,
+                  borderLeftWidth: 2,
+                  borderRightWidth: 2,
+                  borderBottomWidth: 2,
+                  borderColor: colors.brand,
+                } : null,
+              ]}
             >
               {/* Hour gridlines */}
               {HOUR_MARKERS.map((m) => (

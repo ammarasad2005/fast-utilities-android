@@ -10,6 +10,7 @@ import { filterExams, filterSummerExams, matchesSummerCourse, groupByDay, sortBy
 import { buildRoomCalendar, getAvailableRooms, STANDARD_SLOTS, groupRoomsByBlock, mergeRoomCalendars } from '@/core/roomLogic';
 import { flattenFaculty, searchFaculty, getFacultyRank } from '@/core/faculty';
 import { getCalendarCells, parseEventDate } from '@/core/events';
+import { resolveWeekPlan, attachEntries, getEffectiveTodayDate, isTomorrowPreview } from '@/core/weekPlan';
 import { getSemesterProgress, getSemesterMilestones, getSemesterStartDate, getSemesterEndDate, getFinalExamsEndDate, getSemesterWeekNumber } from '@/core/semester';
 import type { RawTimetableJSON, ExamEntry, RawFacultyDepartment, TimetableEntry, SemesterCalendar } from '@/core/types';
 
@@ -335,5 +336,144 @@ describe('mergeRoomCalendars', () => {
     const merged = mergeRoomCalendars(a, b);
     expect(Object.keys(merged).sort()).toEqual(['B-201', 'CR-01', 'CR-02', 'CR-05', 'LAB-1'].sort());
     expect(merged['CR-01'].Monday.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ─── Week plan (today/tomorrow + rolling dates, web parity) ──────────────────
+
+const metaWeek1 = [
+  { day: 'Monday', sheetName: 'Monday', date: '', isoDate: '2026-08-17', isMakeup: false },
+  { day: 'Tuesday', sheetName: 'Tuesday', date: '', isoDate: '2026-08-18', isMakeup: false },
+  { day: 'Wednesday', sheetName: 'Wednesday', date: '', isoDate: '2026-08-19', isMakeup: false },
+  { day: 'Thursday', sheetName: 'Thursday', date: '', isoDate: '2026-08-20', isMakeup: false },
+  { day: 'Friday', sheetName: 'Friday', date: '', isoDate: '2026-08-21', isMakeup: false },
+  { day: 'Saturday', sheetName: 'Saturday', date: '', isoDate: '2026-08-22', isMakeup: false },
+];
+
+const at = (iso: string) => new Date(iso);
+
+describe('weekPlan: effective today & tomorrow preview', () => {
+  test('before 5:30 PM the effective day is today', () => {
+    expect(getEffectiveTodayDate(at('2026-08-19T17:29:00')).toISOString?.() || '').toContain?.('');
+    const eff = getEffectiveTodayDate(at('2026-08-19T17:29:00'));
+    expect(eff.getDate()).toBe(19);
+    expect(isTomorrowPreview(at('2026-08-19T17:29:00'))).toBe(false);
+  });
+  test('at/after 5:30 PM the effective day rolls to tomorrow', () => {
+    const eff = getEffectiveTodayDate(at('2026-08-19T17:30:00'));
+    expect(eff.getDate()).toBe(20);
+    expect(isTomorrowPreview(at('2026-08-19T17:30:00'))).toBe(true);
+  });
+});
+
+describe('weekPlan: rolling dates (web re-dates onto the effective week)', () => {
+  test('Wednesday mid-week: dates land on current week, Wednesday pinned first', () => {
+    const plan = resolveWeekPlan(metaWeek1, { semesterStartISO: '2026-08-17', now: at('2026-08-19T10:00:00') });
+    expect(plan.sheets[0].day).toBe('Wednesday');
+    expect(plan.sheets[0].isToday).toBe(true);
+    expect(plan.sheets[0].isoDate).toBe('2026-08-19');
+    expect(plan.tomorrowPreview).toBe(false);
+    expect(plan.sheets.map((s) => s.isoDate)).toEqual([
+      '2026-08-19', // today first
+      '2026-08-17', '2026-08-18', '2026-08-20', '2026-08-21', '2026-08-22',
+    ]);
+    expect(plan.sheets.map((s) => s.dateStr)).toEqual([
+      '19 Aug', '17 Aug', '18 Aug', '20 Aug', '21 Aug', '22 Aug',
+    ]);
+  });
+
+  test('Sunday morning: previous week shown, no today badge (matches web)', () => {
+    const plan = resolveWeekPlan(metaWeek1, { semesterStartISO: '2026-08-17', now: at('2026-08-23T09:00:00') });
+    expect(plan.sheets.every((s) => !s.isToday)).toBe(true);
+    expect(plan.sheets[0].day).toBe('Monday');
+    expect(plan.sheets[0].isoDate).toBe('2026-08-17');
+    expect(plan.sheets[5].isoDate).toBe('2026-08-22');
+  });
+
+  test('Sunday evening: whole grid rolls to next week, Monday pinned as tomorrow-preview', () => {
+    const plan = resolveWeekPlan(metaWeek1, { semesterStartISO: '2026-08-17', now: at('2026-08-23T18:00:00') });
+    expect(plan.tomorrowPreview).toBe(true);
+    expect(plan.sheets[0].day).toBe('Monday');
+    expect(plan.sheets[0].isToday).toBe(true);
+    expect(plan.sheets[0].isoDate).toBe('2026-08-24');
+    expect(plan.sheets[5].isoDate).toBe('2026-08-29');
+  });
+
+  test('Friday evening: Saturday becomes the pinned day (tomorrow preview)', () => {
+    const plan = resolveWeekPlan(metaWeek1, { semesterStartISO: '2026-08-17', now: at('2026-08-21T18:00:00') });
+    expect(plan.sheets[0].day).toBe('Saturday');
+    expect(plan.sheets[0].isToday).toBe(true);
+    expect(plan.sheets[0].isoDate).toBe('2026-08-22');
+  });
+});
+
+describe('weekPlan: semester-start handling', () => {
+  test('before the semester starts, highlight is suppressed and the week clamps to the start week', () => {
+    const plan = resolveWeekPlan(metaWeek1, { semesterStartISO: '2026-08-24', now: at('2026-08-19T10:00:00') });
+    expect(plan.beforeSemesterStart).toBe(true);
+    expect(plan.sheets.every((s) => !s.isToday)).toBe(true);
+    // reference Monday clamped to the semester start week (week of the 24th)
+    expect(plan.sheets[0].isoDate).toBe('2026-08-24');
+    expect(plan.sheets[5].isoDate).toBe('2026-08-29');
+  });
+});
+
+describe('weekPlan: makeup (dated) sheets', () => {
+  test('current-week makeup displaces the regular day to next week', () => {
+    const meta = [
+      { day: 'Monday', sheetName: 'Monday (August 18)', date: '', isoDate: '2026-08-18', isMakeup: true },
+      ...metaWeek1,
+    ];
+    const plan = resolveWeekPlan(meta, { semesterStartISO: '2026-08-17', now: at('2026-08-17T10:00:00') });
+    const makeup = plan.sheets.find((s) => s.isMakeup);
+    expect(makeup?.isoDate).toBe('2026-08-18');
+    expect(makeup?.dateStr).toBe('18 Aug');
+    const regularMonday = plan.sheets.find((s) => !s.isMakeup && s.day === 'Monday');
+    expect(regularMonday?.isoDate).toBe('2026-08-24'); // pushed to next week
+  });
+
+  test('makeup beyond the current week goes to the upcoming list', () => {
+    const meta = [
+      ...metaWeek1,
+      { day: 'Wednesday', sheetName: 'Wednesday (August 27)', date: '', isoDate: '2026-08-27', isMakeup: true },
+    ];
+    const plan = resolveWeekPlan(meta, { semesterStartISO: '2026-08-17', now: at('2026-08-19T10:00:00') });
+    expect(plan.sheets.some((s) => s.isMakeup)).toBe(false);
+    expect(plan.upcomingMakeupDays[0]?.isoDate).toBe('2026-08-27');
+    // regular Wednesday stays in place and is today
+    const wed = plan.sheets.find((s) => s.day === 'Wednesday');
+    expect(wed?.isoDate).toBe('2026-08-19');
+    expect(wed?.isToday).toBe(true);
+  });
+
+  test('stale or far-future makeup sheets are dropped', () => {
+    const meta = [
+      ...metaWeek1,
+      { day: 'Thursday', sheetName: 'Thursday (July 30)', date: '', isoDate: '2026-07-30', isMakeup: true },
+      { day: 'Friday', sheetName: 'Friday (October 30)', date: '', isoDate: '2026-10-30', isMakeup: true },
+    ];
+    const plan = resolveWeekPlan(meta, { semesterStartISO: '2026-08-17', now: at('2026-08-19T10:00:00') });
+    expect(plan.sheets.every((s) => !s.isMakeup)).toBe(true);
+    expect(plan.upcomingMakeupDays).toHaveLength(0);
+  });
+});
+
+describe('weekPlan: attachEntries filtering', () => {
+  test('today is kept even with no classes; empty other days are dropped', () => {
+    const plan = resolveWeekPlan(metaWeek1, { semesterStartISO: '2026-08-17', now: at('2026-08-19T10:00:00') });
+    const entries = new Map<string, string[]>([
+      ['Monday', ['CS101']],
+      ['Friday', ['CS102', 'CS103']],
+      ['Saturday', []],
+    ]);
+    const items = attachEntries(plan, entries);
+    expect(items[0].day).toBe('Wednesday');
+    expect(items[0].isToday).toBe(true);
+    expect(items[0].entries).toEqual([]); // empty today survives → "No classes scheduled"
+    const days = items.map((i) => i.day);
+    expect(days).toContain('Monday');
+    expect(days).toContain('Friday');
+    expect(days).not.toContain('Tuesday');  // no entries → dropped
+    expect(days).not.toContain('Saturday'); // empty array → dropped
   });
 });

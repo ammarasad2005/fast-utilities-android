@@ -17,7 +17,7 @@ import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
-import { fetchExamVisibility, fetchFSCTimetable, fetchFSMTimetable, type ExamVisibility } from '@/api/endpoints';
+import { fetchExamVisibility, fetchFSCTimetable, fetchFSMTimetable, fetchSemesterCalendar, type ExamVisibility } from '@/api/endpoints';
 import { exportTimetablePng } from '@/api/exportImage';
 import { CACHE_TTL } from '@/api/config';
 import {
@@ -34,9 +34,10 @@ import {
   groupByDayTimetable,
   makeKey,
 } from '@/core/timetable';
-import type { RawTimetableJSON, TimetableEntry } from '@/core/types';
-import { DAYS_ORDER } from '@/core/types';
-import { getEffectiveToday, isTomorrowPreview } from '@/core/dates';
+import { TIMETABLE_META_KEY, type RawTimetableJSON, type SemesterCalendar, type TimetableEntry } from '@/core/types';
+import { getSemesterStartDate } from '@/core/semester';
+import { attachEntries, resolveWeekPlan } from '@/core/weekPlan';
+import { DaySection } from '@/components/DaySection';
 import { Dropdown } from '@/components/Dropdown';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { WeekGrid, type WeekGridDay } from '@/components/WeekGrid';
@@ -81,6 +82,11 @@ export default function CustomTimetableScreen() {
     CACHE_TTL.schedule
   );
   const semesterName = visibility?.semester_name ?? undefined;
+  const { data: calendar } = useCachedData<SemesterCalendar>(
+    'data:semester',
+    fetchSemesterCalendar,
+    CACHE_TTL.semester
+  );
 
   const entriesBySchool = useMemo(() => {
     const map: Record<string, TimetableEntry[]> = {};
@@ -231,18 +237,32 @@ export default function CustomTimetableScreen() {
   const conflicts = useMemo(() => detectConflicts(matched), [matched]);
   const grouped = useMemo(() => groupByDayTimetable(matched), [matched]);
 
-  // Grid days in fixed Mon–Sat order; custom mixes batches/schools whose sheet
-  // dates may differ, so day badges fall back to matching by day name.
-  const effective = getEffectiveToday();
-  const tomorrowPreview = isTomorrowPreview();
-  const gridDays = useMemo<WeekGridDay[]>(() => {
-    const byDay = new Map(grouped.map((g) => [g.day, g.entries]));
-    return DAYS_ORDER.map((d) => ({
-      dayName: d,
-      entries: byDay.get(d) ?? [],
-      badge: d === effective.dayName ? (tomorrowPreview ? 'tomorrow' : 'today') : null,
-    }));
-  }, [grouped, effective.dayName, tomorrowPreview]);
+  // Same week resolution as the main timetable (web parity): rolling dates for
+  // the effective-today week, today pinned first, TODAY/TOMORROW badge.
+  const activeSchool = mode === 'view' && activeBundle ? activeBundle.school : school;
+  const activeRaw = activeSchool === 'FSM' ? fsm.data : fsc.data;
+  const weekPlan = useMemo(
+    () =>
+      resolveWeekPlan(activeRaw?.[TIMETABLE_META_KEY]?.days, {
+        semesterStartISO: getSemesterStartDate(calendar ?? null),
+      }),
+    [activeRaw, calendar]
+  );
+  const dayItems = useMemo(
+    () => attachEntries(weekPlan, new Map(grouped.map((g) => [g.day, g.entries]))),
+    [weekPlan, grouped]
+  );
+  const gridDays = useMemo<WeekGridDay[]>(
+    () =>
+      dayItems.map((s) => ({
+        dayName: s.day,
+        sheetName: s.sheetName,
+        isoDate: s.isoDate,
+        entries: s.entries,
+        badge: s.isToday ? (weekPlan.tomorrowPreview ? 'tomorrow' : 'today') : null,
+      })),
+    [dayItems, weekPlan.tomorrowPreview]
+  );
 
   // ── Builder actions ─────────────────────────────────────────────────────────
   const updateRow = (id: string, patch: Partial<Row>) =>
@@ -651,20 +671,23 @@ export default function CustomTimetableScreen() {
             message={mode === 'view' ? 'This bundle has no valid classes against current data.' : 'Select at least one course with a valid section.'}
           />
         ) : viewMode === 'list' ? (
-          grouped.map((g) => (
-            <View key={g.day} style={{ marginBottom: 12 }}>
-              <View style={styles.dayHeader}>
-                <Text style={styles.dayName}>{g.day}</Text>
-                <Text style={styles.dayCount}>{g.entries.length} classes</Text>
-              </View>
-              {g.entries.map((e, i) => (
+          dayItems.map((s) => (
+            <DaySection
+              key={s.sheetName}
+              dayName={s.day}
+              dateStr={s.dateStr}
+              isMakeup={s.isMakeup}
+              badge={s.isToday ? (weekPlan.tomorrowPreview ? 'tomorrow' : 'today') : null}
+              classCount={s.entries.length}
+            >
+              {s.entries.map((e, i) => (
                 <CustomClassRow
                   key={`${e.courseName}-${e.room}-${i}`}
                   entry={e}
                   conflict={conflicts.has(makeKey(e))}
                 />
               ))}
-            </View>
+            </DaySection>
           ))
         ) : (
           <WeekGrid days={gridDays} />
@@ -834,9 +857,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   exportText: { color: colors.brand, fontWeight: '700', fontSize: 12 },
   conflictBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.dangerBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   conflictBadgeText: { fontSize: 12, fontWeight: '700', color: colors.danger },
-  dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, paddingTop: 4 },
-  dayName: { fontSize: 16, fontWeight: '700', color: colors.text },
-  dayCount: { fontSize: 12, color: colors.textTertiary },
   classCard: {
     flexDirection: 'row',
     backgroundColor: colors.raised,

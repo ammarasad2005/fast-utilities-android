@@ -5,25 +5,11 @@
 
 import type { KeyDate, SemesterCalendar } from './types';
 
-export function getSemesterStartDate(cal: SemesterCalendar): string | null {
-  const start = cal.keyDates?.find((k) =>
+export function getSemesterStartDate(cal: SemesterCalendar | null | undefined): string | null {
+  const start = cal?.keyDates?.find((k) =>
     k.label.toLowerCase().includes('first day of classes')
   );
   return start?.date ?? null;
-}
-
-/**
- * Used to suppress "today" highlighting and ongoing-class detection before the
- * semester has actually started (mirrors the web app).
- */
-export function isBeforeSemesterStart(cal: SemesterCalendar | null, now: Date = new Date()): boolean {
-  if (!cal) return false;
-  const startISO = getSemesterStartDate(cal);
-  if (!startISO) return false;
-  const start = new Date(startISO + 'T00:00:00');
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  return today < start;
 }
 
 /** Returns the "Last Day of Classes" ISO date, or null. */
