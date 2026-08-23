@@ -22,6 +22,7 @@ Timetables, exam schedules, free rooms, faculty info, the semester plan and camp
 | **Semester Timeline** | A sleek live progress bar (with S1/S2/FE markers) on the landing screen. |
 | **Next / Ongoing Class** | Bento card on the landing screen tracking your **tagged timetable** (default config or a saved custom bundle): shows the class in progress with a live "← time left" countdown and progress bar, or the next class with "in Xh Ym" (+ date when it's not today). Uses the web app's exact rules — 5:30 PM rollover to tomorrow, semester-start suppression, cancelled/rescheduled handling, parallel-class grouping. |
 | **Home-screen Widget (Android)** | Native home-screen widget (`modules/widget-store`, a local Expo module — zero added npm dependencies) showing the same Next / Ongoing class snapshot as the in-app card. **Four sizes in the picker** — Compact 2×2, Standard 3×2, Wide 4×2, Large 4×4 — each resizable after placement, and resizing *live-switches the layout* (compact ↔ standard ↔ large buckets via `onAppWidgetOptionsChanged`). Navy-glass gradient surface that works on any wallpaper; ongoing classes get a green accent + end-time progress bar. Tap opens the app. Refreshed on every app-open state change (30 s tick) and by the background sync task even when the app is killed; the OS also re-renders it every 30 min. |
+| **Branded Launch Screen** | A ~2-second brand moment at cold start: the university emblem rises on the app's navy gradient, name + tagline + version pill stagger in, and a "Made with ♥ by Ammar Asad · @ammarasad2005" credit anchors the bottom. The native splash (same navy + emblem) hands off invisibly to the animated JS layer; it never waits on the network and is hard-capped so the app can never be held hostage. |
 | **Campus Events** | Monthly calendar of student events, seminars and drives. |
 
 All data is served by the **existing web app's Vercel backend** — no duplicate database, backend or AI infrastructure was created. The only backend addition is a tiny, additive [`/api/exam-visibility`](https://github.com/ammarasad2005/FAST-Utilities/blob/main/src/app/api/exam-visibility/route.ts) endpoint in the web repo so the app can honour the admin "show exams" toggle without shipping Supabase credentials.
@@ -178,7 +179,7 @@ eas submit -p android
 |---|---|
 | App name | `FAST Utilities` |
 | Package ID | `com.ammarasad.fastutilities` |
-| `versionCode` / `version` | `10` / `1.5.0` |
+| `versionCode` / `version` | `11` / `1.6.0` |
 | Orientation | `portrait` |
 
 Adaptive icon, monochrome icon and splash screen are all derived from the FAST branding.
