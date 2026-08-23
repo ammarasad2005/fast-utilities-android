@@ -84,7 +84,7 @@ export interface TimetableFilter {
   includeRepeats?: boolean;
 }
 
-function isDepartmentMatch(entryDept: string, filterDept: string): boolean {
+export function isDepartmentMatch(entryDept: string, filterDept: string): boolean {
   if (entryDept === filterDept) return true;
   const depts = entryDept.split('/').map((d) => d.trim());
   return depts.includes(filterDept);
@@ -291,4 +291,122 @@ export function detectConflicts(entries: TimetableEntry[], includeRepeats = true
   }
 
   return conflicting;
+}
+
+// ─── "My schedule" selection model (shared by Timetable tab + Home card) ─────
+
+/** `${department}|${category}|${courseName}` — stable identity for a course. */
+export function courseKeyOf(e: Pick<TimetableEntry, 'department' | 'category' | 'courseName'>): string {
+  return `${e.department}|${e.category}|${e.courseName}`;
+}
+
+export interface DisplayConfig {
+  batch: string;
+  department: string;
+  section: string;
+}
+
+export interface DisplayPrefs {
+  /** courseKey → manually chosen section */
+  sectionByCourse: Record<string, string>;
+  /** `${courseKey}|${section}` — electives/repeats picked into view */
+  pickedElectives: string[];
+}
+
+export const EMPTY_DISPLAY_PREFS: DisplayPrefs = { sectionByCourse: {}, pickedElectives: [] };
+
+/**
+ * The exact set of entries a configured user sees as "their" schedule —
+ * extracted verbatim from the Timetable tab so the Home next-class card works
+ * on the identical class list (mirrors the web's getLiveTimetableEntries):
+ * own-section courses with per-course section overrides, plus picked
+ * electives/repeats, deduplicated.
+ */
+export function computeDisplayedEntries(
+  entries: TimetableEntry[],
+  cfg: DisplayConfig,
+  prefs: DisplayPrefs = EMPTY_DISPLAY_PREFS
+): TimetableEntry[] {
+  const base = filterTimetable(entries, {
+    batch: cfg.batch,
+    department: cfg.department,
+    section: cfg.section,
+    query: '',
+  });
+
+  const defaultSectionByCourse = new Map<string, string>();
+  for (const e of base) {
+    const key = courseKeyOf(e);
+    if (!defaultSectionByCourse.has(key)) defaultSectionByCourse.set(key, e.section);
+  }
+
+  const out: TimetableEntry[] = [];
+  const seen = new Set<string>();
+
+  // Main: chosen section per course (manual override or own-section default).
+  for (const e of entries) {
+    if (e.batch !== cfg.batch || !isDepartmentMatch(e.department, cfg.department)) continue;
+    if (e.isElective || e.category === 'repeat') continue;
+    const key = courseKeyOf(e);
+    const chosen = prefs.sectionByCourse[key] ?? defaultSectionByCourse.get(key);
+    if (chosen == null || e.section !== chosen) continue;
+    const k = makeKey(e);
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push(e);
+    }
+  }
+
+  // Picked electives/repeats.
+  for (const e of entries) {
+    if (e.batch !== cfg.batch || !isDepartmentMatch(e.department, cfg.department)) continue;
+    if (!(e.isElective || e.category === 'repeat')) continue;
+    const pickKey = `${courseKeyOf(e)}|${e.section}`;
+    if (!prefs.pickedElectives.includes(pickKey)) continue;
+    const k = makeKey(e);
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push(e);
+    }
+  }
+
+  return out;
+}
+
+/** Minimal shape of a custom-timetable row needed for matching. */
+export interface CustomRowLike {
+  batch: string;
+  dept: string;
+  category: string;
+  selection: string; // "Course Name | Section"
+}
+
+/**
+ * Resolve custom-timetable rows against a school's entries — identical to the
+ * Custom Timetable screen's matcher (batch + dept + category + course +
+ * section, deduplicated per slot).
+ */
+export function matchCustomRows(entries: TimetableEntry[], rows: CustomRowLike[]): TimetableEntry[] {
+  const seen = new Set<string>();
+  const out: TimetableEntry[] = [];
+  for (const r of rows) {
+    if (!r.batch || !r.dept || !r.category || !r.selection) continue;
+    const [courseName, section] = r.selection.split(' | ');
+    for (const e of entries) {
+      if (
+        e.batch === r.batch &&
+        e.department === r.dept &&
+        e.category === r.category &&
+        e.courseName === courseName &&
+        e.section === section
+      ) {
+        const key = `${e.day}|${e.time}|${e.courseName}|${e.section}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push(e);
+        }
+      }
+    }
+  }
+  return out;
 }

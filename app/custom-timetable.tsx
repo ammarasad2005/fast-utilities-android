@@ -10,7 +10,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
@@ -33,34 +32,24 @@ import {
   formatTimeRange,
   groupByDayTimetable,
   makeKey,
+  matchCustomRows,
 } from '@/core/timetable';
 import { TIMETABLE_META_KEY, type RawTimetableJSON, type SemesterCalendar, type TimetableEntry } from '@/core/types';
 import { getSemesterStartDate } from '@/core/semester';
 import { attachEntries, resolveWeekPlan } from '@/core/weekPlan';
+import { loadBundles, saveBundles, type BundleRow, type CustomBundle } from '@/prefs/bundles';
 import { DaySection } from '@/components/DaySection';
 import { Dropdown } from '@/components/Dropdown';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { WeekGrid, type WeekGridDay } from '@/components/WeekGrid';
 import { EmptyState, ErrorState, LoadingState, SectionHeader } from '@/components/ui';
 
-const BUNDLES_KEY = 'custom:timetable_bundles';
 const CATEGORIES = ['regular', 'repeat'] as const;
 const CATEGORY_LABELS: Record<string, string> = { regular: 'Regular', repeat: 'Repeat' };
 
-interface Row {
-  id: string;
-  batch: string;
-  dept: string;
-  category: string;
-  selection: string; // "Course Name | Section"
-}
-
-interface Bundle {
-  id: string;
-  name: string;
-  school: string; // 'FSC' | 'FSM' — timetables are built per school
-  rows: Row[];
-}
+// Shared shapes + storage live in prefs/bundles (the Home card reads them too)
+type Row = BundleRow;
+type Bundle = CustomBundle;
 
 let counter = 0;
 function makeRow(batch: string, dept = ''): Row {
@@ -132,15 +121,7 @@ export default function CustomTimetableScreen() {
     useCallback(() => {
       let cancelled = false;
       (async () => {
-        let list: Bundle[] = [];
-        try {
-          const raw = await AsyncStorage.getItem(BUNDLES_KEY);
-          list = raw ? JSON.parse(raw) : [];
-        } catch {
-          list = [];
-        }
-        // Migrate pre-school bundles: default to FSC.
-        list = list.map((b) => ({ ...b, school: b.school ?? 'FSC' }));
+        const list = await loadBundles();
         const spref = await getSavedSchedule();
         if (cancelled) return;
         setBundles(list);
@@ -167,7 +148,7 @@ export default function CustomTimetableScreen() {
 
   const persistBundles = (next: Bundle[]) => {
     setBundles(next);
-    AsyncStorage.setItem(BUNDLES_KEY, JSON.stringify(next)).catch(() => {});
+    saveBundles(next);
   };
 
   const activeBundle = bundles.find((b) => b.id === activeBundleId) ?? null;
@@ -200,31 +181,8 @@ export default function CustomTimetableScreen() {
 
   /** Match a set of builder rows against a school's entries → concrete classes. */
   const matchedFor = useCallback(
-    (rs: Row[], schoolKey: string): TimetableEntry[] => {
-      const schoolEntries = entriesBySchool[schoolKey] ?? [];
-      const seen = new Set<string>();
-      const out: TimetableEntry[] = [];
-      for (const r of rs) {
-        if (!r.batch || !r.dept || !r.category || !r.selection) continue;
-        const [courseName, section] = r.selection.split(' | ');
-        for (const e of schoolEntries) {
-          if (
-            e.batch === r.batch &&
-            e.department === r.dept &&
-            e.category === r.category &&
-            e.courseName === courseName &&
-            e.section === section
-          ) {
-            const key = `${e.day}|${e.time}|${e.courseName}|${e.section}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              out.push(e);
-            }
-          }
-        }
-      }
-      return out;
-    },
+    (rs: Row[], schoolKey: string): TimetableEntry[] =>
+      matchCustomRows(entriesBySchool[schoolKey] ?? [], rs),
     [entriesBySchool]
   );
 

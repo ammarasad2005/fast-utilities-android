@@ -33,6 +33,8 @@ import {
   type SavedSchedule,
 } from '@/prefs/savedSchedule';
 import {
+  computeDisplayedEntries,
+  courseKeyOf,
   filterTimetable,
   flattenTimetable,
   formatTimeRange,
@@ -40,7 +42,7 @@ import {
   getAvailableDepartments,
   getAvailableSections,
   groupByDayTimetable,
-  makeKey,
+  isDepartmentMatch,
 } from '@/core/timetable';
 import { TIMETABLE_META_KEY, type RawTimetableJSON, type SemesterCalendar, type TimetableEntry } from '@/core/types';
 import { DaySection } from '@/components/DaySection';
@@ -50,14 +52,7 @@ import { Chip, EmptyState, ErrorState, LoadingState, OfflineNotice, SectionHeade
 type ViewMode = 'list' | 'grid';
 
 /** Course identity for section-choice: same course (dept+category+name) across sections. */
-function courseKeyOf(e: Pick<TimetableEntry, 'department' | 'category' | 'courseName'>): string {
-  return `${e.department}|${e.category}|${e.courseName}`;
-}
 
-function isDeptMatch(entryDept: string, filterDept: string): boolean {
-  if (entryDept === filterDept) return true;
-  return entryDept.split('/').map((d) => d.trim()).includes(filterDept);
-}
 
 interface ResultPrefs {
   sectionByCourse: Record<string, string>;
@@ -212,7 +207,7 @@ export default function TimetableScreen() {
   const courseSectionsByKey = useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const e of entries) {
-      if (e.batch !== effBatch || !isDeptMatch(e.department, effDept)) continue;
+      if (e.batch !== effBatch || !isDepartmentMatch(e.department, effDept)) continue;
       if (e.isElective || e.category === 'repeat') continue;
       const key = courseKeyOf(e);
       if (!map.has(key)) map.set(key, new Set());
@@ -227,20 +222,13 @@ export default function TimetableScreen() {
     return sorted;
   }, [entries, effBatch, effDept]);
 
-  // Chosen section per course (manual override or the user's own-section default).
-  const effectiveSectionFor = useCallback(
-    (key: string): string | undefined =>
-      resultPrefs.sectionByCourse[key] ?? defaultSectionByCourse.get(key),
-    [resultPrefs.sectionByCourse, defaultSectionByCourse]
-  );
-
   // ── Electives / Others model ────────────────────────────────────────────────
   const electivesCtx = useMemo(
     () =>
       entries.filter(
         (e) =>
           e.batch === effBatch &&
-          isDeptMatch(e.department, effDept) &&
+          isDepartmentMatch(e.department, effDept) &&
           (e.isElective || e.category === 'repeat')
       ),
     [entries, effBatch, effDept]
@@ -262,34 +250,16 @@ export default function TimetableScreen() {
   }, [electivesCtx]);
 
   // ── Displayed schedule ──────────────────────────────────────────────────────
-  const displayed = useMemo(() => {
-    const out: TimetableEntry[] = [];
-    const seen = new Set<string>();
-    // Main: chosen section per course.
-    for (const e of entries) {
-      if (e.batch !== effBatch || !isDeptMatch(e.department, effDept)) continue;
-      if (e.isElective || e.category === 'repeat') continue;
-      const key = courseKeyOf(e);
-      const chosen = effectiveSectionFor(key);
-      if (chosen == null || e.section !== chosen) continue;
-      const k = makeKey(e);
-      if (!seen.has(k)) {
-        seen.add(k);
-        out.push(e);
-      }
-    }
-    // Picked electives/repeats.
-    for (const e of electivesCtx) {
-      const pickKey = `${courseKeyOf(e)}|${e.section}`;
-      if (!resultPrefs.pickedElectives.includes(pickKey)) continue;
-      const k = makeKey(e);
-      if (!seen.has(k)) {
-        seen.add(k);
-        out.push(e);
-      }
-    }
-    return out;
-  }, [entries, effBatch, effDept, electivesCtx, effectiveSectionFor, resultPrefs.pickedElectives]);
+  // Shared selection model (also drives the Home next-class card)
+  const displayed = useMemo(
+    () =>
+      computeDisplayedEntries(
+        entries,
+        { batch: effBatch, department: effDept, section: effSection },
+        resultPrefs
+      ),
+    [entries, effBatch, effDept, effSection, resultPrefs]
+  );
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();

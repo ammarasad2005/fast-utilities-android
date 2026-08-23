@@ -5,12 +5,13 @@
  * src/lib modules, so the mobile client reproduces identical data semantics.
  */
 
-import { flattenTimetable, filterTimetable, formatTime, formatTimeRange, getAvailableSections, extractTimeFromCourseName, detectConflicts, makeKey } from '@/core/timetable';
+import { flattenTimetable, filterTimetable, formatTime, formatTimeRange, getAvailableSections, extractTimeFromCourseName, detectConflicts, makeKey, computeDisplayedEntries } from '@/core/timetable';
 import { filterExams, filterSummerExams, matchesSummerCourse, groupByDay, sortByChronological } from '@/core/exams';
 import { buildRoomCalendar, getAvailableRooms, STANDARD_SLOTS, groupRoomsByBlock, mergeRoomCalendars } from '@/core/roomLogic';
 import { flattenFaculty, searchFaculty, getFacultyRank } from '@/core/faculty';
 import { getCalendarCells, parseEventDate } from '@/core/events';
 import { resolveWeekPlan, attachEntries, getEffectiveTodayDate, isTomorrowPreview } from '@/core/weekPlan';
+import { computeClassStatus } from '@/core/liveClass';
 import { getSemesterProgress, getSemesterMilestones, getSemesterStartDate, getSemesterEndDate, getFinalExamsEndDate, getSemesterWeekNumber } from '@/core/semester';
 import type { RawTimetableJSON, ExamEntry, RawFacultyDepartment, TimetableEntry, SemesterCalendar } from '@/core/types';
 
@@ -545,5 +546,144 @@ describe('scenario flags: web parity (identification layer)', () => {
     const cal = buildRoomCalendar(withFlags);
     expect(Object.keys(cal)).not.toContain('Margala 4 (C-212');
     expect(Object.keys(cal)).toContain('ReSch D-414');
+  });
+});
+
+// ─── Live class status (next/ongoing engine, DesktopTicker parity) ───────────
+
+const metaW = [
+  { day: 'Monday', sheetName: 'Monday', date: '', isoDate: '2026-08-17', isMakeup: false },
+  { day: 'Tuesday', sheetName: 'Tuesday', date: '', isoDate: '2026-08-18', isMakeup: false },
+  { day: 'Wednesday', sheetName: 'Wednesday', date: '', isoDate: '2026-08-19', isMakeup: false },
+  { day: 'Thursday', sheetName: 'Thursday', date: '', isoDate: '2026-08-20', isMakeup: false },
+  { day: 'Friday', sheetName: 'Friday', date: '', isoDate: '2026-08-21', isMakeup: false },
+  { day: 'Saturday', sheetName: 'Saturday', date: '', isoDate: '2026-08-22', isMakeup: false },
+];
+const planFor = (semesterStartISO: string | null, now: Date) => resolveWeekPlan(metaW, { semesterStartISO, now });
+
+function entry(day: string, time: string, extra: Partial<TimetableEntry> = {}): TimetableEntry {
+  return {
+    courseName: 'PF', batch: '2026', department: 'CS', section: 'A',
+    day, time, room: 'C-301', type: 'lecture', category: 'regular', ...extra,
+  } as TimetableEntry;
+}
+
+describe('liveClass: ongoing detection', () => {
+  test('a class in progress is ongoing with remaining minutes', () => {
+    const plan = planFor('2026-08-17', at('2026-08-19T09:00:00'));
+    const status = computeClassStatus([entry('Wednesday', '08:30-09:50')], plan, at('2026-08-19T09:00:00'));
+    expect(status?.type).toBe('ongoing');
+    expect(status?.classes[0].remaining).toBe(50);
+    expect(status?.classes[0].dateISO).toBe('2026-08-19');
+  });
+
+  test('cancelled classes are never ongoing', () => {
+    const plan = planFor('2026-08-17', at('2026-08-19T09:00:00'));
+    const status = computeClassStatus(
+      [entry('Wednesday', '08:30-09:50', { cancelled: true }), entry('Thursday', '08:30-09:50', { courseName: 'Calculus' })],
+      plan,
+      at('2026-08-19T09:00:00')
+    );
+    expect(status?.type).toBe('next');
+    expect(status?.classes[0].courseName).toBe('Calculus');
+    expect(status?.classes[0].dateISO).toBe('2026-08-20');
+  });
+
+  test('ongoing is suppressed before the semester starts (web rule)', () => {
+    const now = at('2026-08-19T09:00:00');
+    const plan = planFor('2026-08-24', now); // starts next week
+    expect(plan.beforeSemesterStart).toBe(true);
+    const status = computeClassStatus([entry('Wednesday', '08:30-09:50')], plan, now);
+    expect(status?.type).toBe('next'); // never "ongoing" pre-semester
+    expect(status?.classes[0].dateISO).toBe('2026-08-26'); // clamped to start week
+  });
+});
+
+describe('liveClass: next-up detection', () => {
+  test('same-day upcoming class reports minutes until', () => {
+    const plan = planFor('2026-08-17', at('2026-08-19T08:00:00'));
+    const status = computeClassStatus([entry('Wednesday', '08:30-09:50')], plan, at('2026-08-19T08:00:00'));
+    expect(status?.type).toBe('next');
+    expect(status?.classes[0].until).toBe(30);
+  });
+
+  test('after 5:30 PM the plan rolls to tomorrow and counts down to it', () => {
+    const now = at('2026-08-19T17:45:00');
+    const plan = planFor('2026-08-17', now);
+    const status = computeClassStatus([entry('Thursday', '08:30-09:50')], plan, now);
+    expect(status?.type).toBe('next');
+    expect(status?.classes[0].dateISO).toBe('2026-08-20');
+    expect(status?.classes[0].until).toBe(14 * 60 + 45);
+  });
+
+  test('a class already past this week rolls to next week', () => {
+    const now = at('2026-08-22T12:00:00'); // Saturday
+    const plan = planFor('2026-08-17', now);
+    const status = computeClassStatus([entry('Monday', '08:30-09:50')], plan, now);
+    expect(status?.type).toBe('next');
+    expect(status?.classes[0].dateISO).toBe('2026-08-24');
+  });
+
+  test('cancelled classes are never next-up either', () => {
+    const now = at('2026-08-19T08:00:00');
+    const plan = planFor('2026-08-17', now);
+    expect(computeClassStatus([entry('Wednesday', '08:30-09:50', { cancelled: true })], plan, now)).toBeNull();
+  });
+
+  test('parallel classes starting at the same time are grouped together', () => {
+    const now = at('2026-08-19T08:00:00');
+    const plan = planFor('2026-08-17', now);
+    const status = computeClassStatus(
+      [entry('Wednesday', '08:30-09:50'), entry('Wednesday', '08:30-09:50', { courseName: 'LA', section: 'B' })],
+      plan,
+      now
+    );
+    expect(status?.type).toBe('next');
+    expect(status?.classes).toHaveLength(2);
+  });
+
+  test('empty/unparseable schedules yield null', () => {
+    const plan = planFor('2026-08-17', at('2026-08-19T08:00:00'));
+    expect(computeClassStatus([], plan, at('2026-08-19T08:00:00'))).toBeNull();
+    expect(computeClassStatus([entry('Wednesday', 'TBA')], plan, at('2026-08-19T08:00:00'))).toBeNull();
+  });
+});
+
+describe('liveClass: displayed-entry model (what the card tracks)', () => {
+  const raw: RawTimetableJSON = {
+    '2026': {
+      CS: {
+        repeat: {},
+        regular: {
+          PF: {
+            A: { Monday: [{ room: 'C-301', time: '08:30-09:50', rescheduled: false, exam: false }], Friday: [] },
+            B: { Monday: [{ room: 'C-302', time: '10:00-11:20', rescheduled: false, exam: false }], Friday: [] },
+          },
+          'PF Lab': {
+            A1: { Monday: [{ room: 'LAB-1', time: '11:30-02:15', rescheduled: false, exam: false }], Friday: [] },
+          },
+        },
+      },
+    },
+  };
+  const all = flattenTimetable(raw);
+
+  test('default view = own section incl. normalized A1 lab sections', () => {
+    const mine = computeDisplayedEntries(all, { batch: '2026', department: 'CS', section: 'A' });
+    expect(mine.map((m) => `${m.courseName}@${m.section}@${m.room}`).sort()).toEqual([
+      'PF Lab@A1@LAB-1',
+      'PF@A@C-301',
+    ]);
+  });
+
+  test('section override switches the tracked section', () => {
+    const mine = computeDisplayedEntries(
+      all,
+      { batch: '2026', department: 'CS', section: 'A' },
+      { sectionByCourse: { 'CS|regular|PF': 'B' }, pickedElectives: [] }
+    );
+    const pf = mine.find((m) => m.courseName === 'PF');
+    expect(pf?.section).toBe('B');
+    expect(pf?.room).toBe('C-302');
   });
 });

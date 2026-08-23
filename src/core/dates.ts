@@ -104,3 +104,20 @@ export function daysUntil(isoDate: string, now: Date = new Date()): number {
   const target = new Date(isoDate + 'T00:00:00');
   return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
+
+/** "Xm" / "Xh Ym" / "Xd Yh Zm" — ported from the web app's formatDuration. */
+export function formatDuration(totalMins: number): string {
+  const d = Math.floor(totalMins / (24 * 60));
+  const h = Math.floor((totalMins % (24 * 60)) / 60);
+  const m = totalMins % 60;
+
+  if (d > 0) {
+    if (h === 0 && m === 0) return `${d}d`;
+    if (m === 0) return `${d}d ${h}h`;
+    if (h === 0) return `${d}d ${m}m`;
+    return `${d}d ${h}h ${m}m`;
+  }
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}

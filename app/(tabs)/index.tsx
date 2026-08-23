@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
   Modal,
@@ -8,13 +8,14 @@ import {
   Text,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
-import { fetchSemesterCalendar } from '@/api/endpoints';
+import { fetchFSCTimetable, fetchFSMTimetable, fetchSemesterCalendar } from '@/api/endpoints';
 import { CACHE_TTL } from '@/api/config';
 import {
   getUpcomingKeyDates,
@@ -23,8 +24,21 @@ import {
   getSemesterProgress,
   getSemesterMilestones,
   getSemesterWeekNumber,
+  getSemesterStartDate,
 } from '@/core/semester';
-import type { SemesterCalendar } from '@/core/types';
+import {
+  computeDisplayedEntries,
+  EMPTY_DISPLAY_PREFS,
+  flattenTimetable,
+  matchCustomRows,
+  type DisplayPrefs,
+} from '@/core/timetable';
+import { computeClassStatus } from '@/core/liveClass';
+import { resolveWeekPlan } from '@/core/weekPlan';
+import { TIMETABLE_META_KEY, type RawTimetableJSON, type SemesterCalendar, type TimetableEntry } from '@/core/types';
+import { NextClassCard } from '@/components/NextClassCard';
+import { getSavedSchedule, type SavedSchedule } from '@/prefs/savedSchedule';
+import { loadBundles, type CustomBundle } from '@/prefs/bundles';
 
 type Feature = {
   id: string;
@@ -89,6 +103,100 @@ export default function HomeScreen() {
     return { pct, week, milestones, color: interpolateColor(pct) };
   }, [calendar]);
 
+  // ── Live class tracking (port of the web's DesktopTicker) ──────────────────
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30_000); // 30s refresh
+    return () => clearInterval(timer);
+  }, []);
+
+  const fsc = useCachedData<RawTimetableJSON>('data:timetable:FSC', fetchFSCTimetable, CACHE_TTL.timetable);
+  const fsm = useCachedData<RawTimetableJSON>('data:timetable:FSM', fetchFSMTimetable, CACHE_TTL.timetable);
+  const entriesBySchool = useMemo(() => {
+    const map: Record<string, TimetableEntry[]> = {};
+    if (fsc.data) map.FSC = flattenTimetable(fsc.data);
+    if (fsm.data) map.FSM = flattenTimetable(fsm.data);
+    return map;
+  }, [fsc.data, fsm.data]);
+
+  // The tagged "my timetable" (default config or a custom bundle) + its prefs.
+  // Reloaded on every focus so tagging then returning home updates the card.
+  const [saved, setSaved] = useState<SavedSchedule | null>(null);
+  const [bundles, setBundles] = useState<CustomBundle[]>([]);
+  const [resultPrefs, setResultPrefs] = useState<DisplayPrefs>(EMPTY_DISPLAY_PREFS);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      setNow(new Date());
+      (async () => {
+        const spref = await getSavedSchedule();
+        const bl = await loadBundles();
+        if (!active) return;
+        setSaved(spref);
+        setBundles(bl);
+        if (spref?.kind === 'default') {
+          const scope = `${spref.school}:${spref.batch}:${spref.dept}:${spref.section}`;
+          try {
+            const rawRaw = await AsyncStorage.getItem(`pref:resultprefs:${scope}`);
+            if (!active) return;
+            const parsed = rawRaw ? JSON.parse(rawRaw) : null;
+            setResultPrefs({
+              sectionByCourse: parsed?.sectionByCourse ?? {},
+              pickedElectives: parsed?.pickedElectives ?? [],
+            });
+          } catch {
+            if (active) setResultPrefs(EMPTY_DISPLAY_PREFS);
+          }
+        } else if (active) {
+          setResultPrefs(EMPTY_DISPLAY_PREFS);
+        }
+      })();
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
+  const liveSchool =
+    saved?.kind === 'bundle'
+      ? bundles.find((b) => b.id === saved.bundleId)?.school ?? null
+      : saved?.kind === 'default'
+        ? saved.school
+        : null;
+  const liveRaw = liveSchool === 'FSM' ? fsm.data : liveSchool === 'FSC' ? fsc.data : null;
+
+  const myEntries = useMemo((): TimetableEntry[] => {
+    if (!saved || !liveSchool) return [];
+    const entries = entriesBySchool[liveSchool] ?? [];
+    if (!entries.length) return [];
+    if (saved.kind === 'bundle') {
+      const bundle = bundles.find((b) => b.id === saved.bundleId);
+      return bundle ? matchCustomRows(entries, bundle.rows) : [];
+    }
+    return computeDisplayedEntries(
+      entries,
+      { batch: saved.batch, department: saved.dept, section: saved.section },
+      resultPrefs
+    );
+  }, [saved, liveSchool, entriesBySchool, bundles, resultPrefs]);
+
+  const livePlan = useMemo(
+    () =>
+      liveRaw
+        ? resolveWeekPlan(liveRaw[TIMETABLE_META_KEY]?.days, {
+            semesterStartISO: getSemesterStartDate(calendar ?? null),
+          })
+        : null,
+    [liveRaw, calendar]
+  );
+
+  const classStatus = useMemo(
+    () => (livePlan ? computeClassStatus(myEntries, livePlan, now) : null),
+    [myEntries, livePlan, now]
+  );
+  const classLoading =
+    !!saved && !liveRaw && (liveSchool === 'FSM' ? fsm.isLoading : fsc.isLoading);
+
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -112,34 +220,39 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        {/* Semester banner (tap → semester schedule) */}
-        {calendar ? (
-          <Pressable
-            onPress={() => router.push('/semester')}
-            android_ripple={{ color: 'rgba(255,255,255,0.15)' }}
-            style={({ pressed }) => [styles.semesterBanner, pressed && { opacity: 0.92 }]}
-          >
-            <View style={styles.semesterRow}>
-              <Ionicons name="school" size={18} color={colors.onBrand} />
-              <Text style={styles.semesterName}>{calendar.semester}</Text>
-              <View style={{ flex: 1 }} />
-              <Ionicons name="chevron-forward" size={18} color={colors.onBrand} style={{ opacity: 0.7 }} />
-            </View>
-            {next ? (
-              <View style={styles.nextRow}>
-                <Text style={styles.nextLabel}>NEXT · {next.label}</Text>
-                <Text style={styles.nextDate}>
-                  {formatKeyDateRange(next)}
-                  {daysUntil(next.date) >= 0 ? ` · in ${daysUntil(next.date)}d` : ''}
-                </Text>
-              </View>
+        {/* Bento row: compressed semester cards (left) + live class tracker (right) */}
+        <View style={styles.bentoRow}>
+          <View style={styles.bentoLeft}>
+            {/* Semester banner, compressed: full milestone label becomes
+                "NEXT ACADEMIC MILESTONE" (spec) — the date line stays as-is. */}
+            {calendar ? (
+              <Pressable
+                onPress={() => router.push('/semester')}
+                android_ripple={{ color: 'rgba(255,255,255,0.15)' }}
+                style={({ pressed }) => [styles.semesterBanner, styles.bentoBanner, pressed && { opacity: 0.92 }]}
+              >
+                <View style={styles.semesterRow}>
+                  <Ionicons name="school" size={15} color={colors.onBrand} />
+                  <Text style={styles.semesterNameCompact} numberOfLines={1}>
+                    {calendar.semester}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.onBrand} style={{ opacity: 0.7 }} />
+                </View>
+                {next ? (
+                  <View style={styles.nextRowCompact}>
+                    <Text style={styles.nextLabelCompact}>NEXT ACADEMIC MILESTONE</Text>
+                    <Text style={styles.nextDateCompact} numberOfLines={1}>
+                      {formatKeyDateRange(next)}
+                      {daysUntil(next.date) >= 0 ? ` · in ${daysUntil(next.date)}d` : ''}
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
             ) : null}
-          </Pressable>
-        ) : null}
 
-        {/* Thin semester timeline */}
-        {timeline ? (
-          <View style={styles.timelineCard}>
+            {/* Thin semester timeline, compressed */}
+            {timeline ? (
+              <View style={styles.timelineCardCompact}>
             <View style={styles.timelineMeta}>
               <Text style={styles.timelineWeek}>
                 {timeline.week ? `Week ${timeline.week}` : 'Semester progress'}
@@ -163,8 +276,19 @@ export default function HomeScreen() {
                 </View>
               ))}
             </View>
+              </View>
+            ) : null}
           </View>
-        ) : null}
+
+          {/* Right column: next / ongoing class (spans both left cards) */}
+          <NextClassCard
+            status={classStatus}
+            plan={livePlan}
+            needsTag={!saved}
+            loading={classLoading}
+            onPress={() => router.push('/(tabs)/timetable' as any)}
+          />
+        </View>
 
         {/* Feature grid */}
         <Text style={styles.sectionLabel}>FEATURES</Text>
@@ -246,6 +370,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   headerText: { flex: 1 },
   brand: { fontSize: 20, fontWeight: '800', color: colors.brand, letterSpacing: -0.3 },
   tagline: { fontSize: 13, color: colors.textSecondary },
+  bentoRow: { flexDirection: 'row', gap: 10, marginBottom: 10, alignItems: 'stretch' },
+  bentoLeft: { flex: 1.04, gap: 10 },
   semesterBanner: {
     backgroundColor: colors.brand,
     borderRadius: 14,
@@ -253,17 +379,18 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: 10,
   },
   semesterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  semesterName: { color: colors.onBrand, fontSize: 17, fontWeight: '700' },
-  nextRow: { marginTop: 10 },
-  nextLabel: { color: colors.onBrand, opacity: 0.7, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
-  nextDate: { color: colors.onBrand, fontSize: 13, marginTop: 2 },
-  timelineCard: {
+  bentoBanner: { marginBottom: 0, padding: 12, flex: 1 },
+  semesterNameCompact: { color: colors.onBrand, fontSize: 14, fontWeight: '700', flex: 1 },
+  nextRowCompact: { marginTop: 8 },
+  nextLabelCompact: { color: colors.onBrand, opacity: 0.75, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  nextDateCompact: { color: colors.onBrand, fontSize: 12.5, marginTop: 3, fontWeight: '600' },
+  timelineCardCompact: {
     backgroundColor: colors.raised,
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    padding: 14,
-    marginBottom: 4,
+    padding: 12,
+    flex: 1,
   },
   timelineMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   timelineWeek: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, letterSpacing: 0.4 },

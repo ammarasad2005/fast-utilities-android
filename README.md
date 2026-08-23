@@ -20,6 +20,7 @@ Timetables, exam schedules, free rooms, faculty info, the semester plan and camp
 | **Faculty Info** | Searchable directory with emails, offices and profiles (tap to copy). |
 | **Semester Schedule** | Academic calendar with key dates, **holidays**, sessionals and finals, plus an "up next" list. |
 | **Semester Timeline** | A sleek live progress bar (with S1/S2/FE markers) on the landing screen. |
+| **Next / Ongoing Class** | Bento card on the landing screen tracking your **tagged timetable** (default config or a saved custom bundle): shows the class in progress with a live "← time left" countdown and progress bar, or the next class with "in Xh Ym" (+ date when it's not today). Uses the web app's exact rules — 5:30 PM rollover to tomorrow, semester-start suppression, cancelled/rescheduled handling, parallel-class grouping. |
 | **Campus Events** | Monthly calendar of student events, seminars and drives. |
 
 All data is served by the **existing web app's Vercel backend** — no duplicate database, backend or AI infrastructure was created. The only backend addition is a tiny, additive [`/api/exam-visibility`](https://github.com/ammarasad2005/FAST-Utilities/blob/main/src/app/api/exam-visibility/route.ts) endpoint in the web repo so the app can honour the admin "show exams" toggle without shipping Supabase credentials.
@@ -176,7 +177,7 @@ eas submit -p android
 |---|---|
 | App name | `FAST Utilities` |
 | Package ID | `com.ammarasad.fastutilities` |
-| `versionCode` / `version` | `6` / `1.2.3` |
+| `versionCode` / `version` | `7` / `1.3.0` |
 | Orientation | `portrait` |
 
 Adaptive icon, monochrome icon and splash screen are all derived from the FAST branding.
