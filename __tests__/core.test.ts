@@ -12,6 +12,7 @@ import { flattenFaculty, searchFaculty, getFacultyRank } from '@/core/faculty';
 import { getCalendarCells, parseEventDate } from '@/core/events';
 import { resolveWeekPlan, attachEntries, getEffectiveTodayDate, isTomorrowPreview } from '@/core/weekPlan';
 import { computeClassStatus } from '@/core/liveClass';
+import { buildSnapshot, epochFor } from '@/widgets/nextClassWidget';
 import { getSemesterProgress, getSemesterMilestones, getSemesterStartDate, getSemesterEndDate, getFinalExamsEndDate, getSemesterWeekNumber } from '@/core/semester';
 import type { RawTimetableJSON, ExamEntry, RawFacultyDepartment, TimetableEntry, SemesterCalendar } from '@/core/types';
 
@@ -685,5 +686,96 @@ describe('liveClass: displayed-entry model (what the card tracks)', () => {
     const pf = mine.find((m) => m.courseName === 'PF');
     expect(pf?.section).toBe('B');
     expect(pf?.room).toBe('C-302');
+  });
+});
+
+
+describe('nextClassWidget: buildSnapshot', () => {
+  const plan = planFor('2026-08-17', at('2026-08-19T09:00:00')); // semester week 1
+
+  it('needsTag wins over any status', () => {
+    const snap = buildSnapshot(null, plan, true);
+    expect(snap.state).toBe('needsTag');
+    expect(snap.course).toBeUndefined();
+  });
+
+  it('null status renders the none state', () => {
+    const snap = buildSnapshot(null, plan, false);
+    expect(snap.state).toBe('none');
+  });
+
+  it('ongoing targets the slot end with total duration for the progress bar', () => {
+    const status = computeClassStatus(
+      [entry('Wednesday', '08:30-09:50', { courseName: 'Linear Algebra', section: 'B' })],
+      plan,
+      at('2026-08-19T09:00:00')
+    );
+    expect(status?.type).toBe('ongoing');
+    const snap = buildSnapshot(status, plan, false, at('2026-08-19T09:00:00'));
+    expect(snap.state).toBe('ongoing');
+    expect(snap.course).toBe('Linear Algebra');
+    expect(snap.meta).toBe('Sec B · C-301');
+    expect(snap.targetEpochMs).toBe(new Date(2026, 7, 19, 9, 50, 0).getTime());
+    expect(snap.totalMin).toBe(80);
+    expect(snap.sub).toBe('ends 09:50 AM');
+    expect(snap.extra).toBe(0);
+    expect(snap.updatedAt).toBe(at('2026-08-19T09:00:00').getTime());
+  });
+
+  it('next on the effective today shows just the start time', () => {
+    const status = computeClassStatus(
+      [entry('Wednesday', '08:30-09:50')],
+      plan,
+      at('2026-08-19T08:00:00')
+    );
+    expect(status?.type).toBe('next');
+    const snap = buildSnapshot(status, plan, false, at('2026-08-19T08:00:00'));
+    expect(snap.targetEpochMs).toBe(new Date(2026, 7, 19, 8, 30, 0).getTime());
+
+    expect(snap.sub).toBe('starts 08:30 AM');
+    expect(snap.totalMin).toBeUndefined();
+  });
+
+  it('next on a different day prefixes weekday and date', () => {
+    const status = computeClassStatus(
+      [entry('Thursday', '08:30-09:50')],
+      plan,
+      at('2026-08-19T09:00:00')
+    );
+    expect(status?.type).toBe('next');
+    const snap = buildSnapshot(status, plan, false, at('2026-08-19T09:00:00'));
+    expect(snap.targetEpochMs).toBe(new Date(2026, 7, 20, 8, 30, 0).getTime());
+
+    expect(snap.sub).toBe('Thu · 20 Aug · 08:30 AM');
+  });
+
+  it('lab entries and TBA rooms format the meta line like the card', () => {
+    const status = computeClassStatus(
+      [entry('Wednesday', '08:30-09:50', { type: 'lab' as const, room: 'TBA' })],
+      plan,
+      at('2026-08-19T08:00:00')
+    );
+    const snap = buildSnapshot(status, plan, false);
+    expect(snap.meta).toBe('Sec A · Lab');
+  });
+
+  it('parallel classes at the same time roll up into extra', () => {
+    const status = computeClassStatus(
+      [
+        entry('Wednesday', '08:30-09:50', { courseName: 'PF' }),
+        entry('Wednesday', '08:30-09:50', { courseName: 'OOP' }),
+        entry('Wednesday', '08:30-09:50', { courseName: 'Calculus' }),
+      ],
+      plan,
+      at('2026-08-19T08:00:00')
+    );
+    const snap = buildSnapshot(status, plan, false);
+    expect(snap.extra).toBe(2);
+    expect(snap.course).toBe('PF'); // first in source order, ties grouped
+  });
+
+  it('epochFor builds the local-time target consistently', () => {
+    expect(epochFor('2026-08-19', 9 * 60 + 50)).toBe(new Date(2026, 7, 19, 9, 50, 0).getTime());
+    expect(epochFor('2026-12-31', 0)).toBe(new Date(2026, 11, 31, 0, 0, 0).getTime());
   });
 });

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Next/ongoing class widget. RemoteViews-safe views only. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/widget_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:orientation="vertical"
+  android:padding="14dp"
+  android:background="@drawable/widget_bg">
+
+  <TextView
+    android:id="@+id/widget_header"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="NEXT UP"
+    android:textSize="10sp"
+    android:textStyle="bold"
+    android:letterSpacing="0.12"
+    android:textColor="#B45309" />
+
+  <TextView
+    android:id="@+id/widget_course"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="6dp"
+    android:text="Linear Algebra"
+    android:textSize="15sp"
+    android:textStyle="bold"
+    android:textColor="#1A1A18"
+    android:maxLines="2"
+    android:ellipsize="end" />
+
+  <TextView
+    android:id="@+id/widget_meta"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="2dp"
+    android:text="Sec B · C-301"
+    android:textSize="12sp"
+    android:textColor="#6B6B66"
+    android:maxLines="1"
+    android:ellipsize="end" />
+
+  <Space
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1" />
+
+  <TextView
+    android:id="@+id/widget_countdown"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="in 2h 15m"
+    android:textSize="22sp"
+    android:textStyle="bold"
+    android:textColor="#073366" />
+
+  <TextView
+    android:id="@+id/widget_sub"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="2dp"
+    android:text="Tue · 25 Aug · 10:00 AM"
+    android:textSize="11sp"
+    android:textColor="#A0A09A"
+    android:maxLines="1"
+    android:ellipsize="end" />
+
+  <ProgressBar
+    android:id="@+id/widget_progress"
+    style="?android:attr/progressBarStyleHorizontal"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp"
+    android:max="100"
+    android:progress="40"
+    android:visibility="gone" />
+
+  <TextView
+    android:id="@+id/widget_extra"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="6dp"
+    android:text="+1 more at this time"
+    android:textSize="10sp"
+    android:textStyle="bold"
+    android:textColor="#B45309"
+    android:visibility="gone" />
+</LinearLayout>

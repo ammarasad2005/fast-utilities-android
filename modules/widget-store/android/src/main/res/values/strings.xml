@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="widget_next_class_label">Next / Ongoing Class</string>
+  <string name="widget_next_class_desc">Shows the class in progress or your next class from your tagged FAST Utilities timetable.</string>
+</resources>

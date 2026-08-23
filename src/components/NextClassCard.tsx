@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { formatDuration, formatISODateShort, parseTimeRange } from '@/core/dates';
-import { formatTime } from '@/core/timetable';
+import { formatSlotEnd, formatSlotStart } from '@/core/timetable';
 import type { ClassStatus } from '@/core/liveClass';
 import type { WeekPlan } from '@/core/weekPlan';
 
@@ -96,7 +96,7 @@ export function NextClassCard({
             {ongoing ? `${formatDuration(primary.remaining)} left` : `in ${formatDuration(primary.until)}`}
           </Text>
           <Text style={styles.subLine} numberOfLines={1}>
-            {ongoing ? `ends ${formatRangeEnd(primary.time)}` : occLabel ? `${occLabel} · ${formatRangeStart(primary.time)}` : `starts ${formatRangeStart(primary.time)}`}
+            {ongoing ? `ends ${formatSlotEnd(primary.time)}` : occLabel ? `${occLabel} · ${formatSlotStart(primary.time)}` : `starts ${formatSlotStart(primary.time)}`}
           </Text>
 
           {/* progress bar for ongoing classes */}
@@ -124,20 +124,6 @@ function OngoingProgress({ time, remaining, colors }: { time: string; remaining:
       <View style={{ width: `${done * 100}%`, height: 4, borderRadius: 2, backgroundColor: colors.success }} />
     </View>
   );
-}
-
-// Small "08:30 AM" helpers pulling the start/end out of the raw slot string
-function slotParts(time: string): string[] {
-  const del = time.includes(' to ') ? ' to ' : '-';
-  return time.split(del).map((s) => s.trim());
-}
-function formatRangeStart(time: string): string {
-  const parts = slotParts(time);
-  return parts.length >= 2 ? formatTime(parts[0]) : time;
-}
-function formatRangeEnd(time: string): string {
-  const parts = slotParts(time);
-  return parts.length >= 2 ? formatTime(parts[parts.length - 1]) : time;
 }
 
 const makeStyles = (colors: ThemeColors) =>

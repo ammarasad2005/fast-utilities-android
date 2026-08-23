@@ -225,6 +225,24 @@ export function formatTime(t: string): string {
   return `${String(h).padStart(2, '0')}:${min} ${period}`;
 }
 
+/** Split a raw slot string ("08:30 - 10:00" or "08:30 to 10:00") into its ends. */
+export function slotParts(time: string): string[] {
+  const del = time.includes(' to ') ? ' to ' : '-';
+  return time.split(del).map((s) => s.trim());
+}
+
+/** "08:30 - 10:00" → "08:30 AM" */
+export function formatSlotStart(time: string): string {
+  const parts = slotParts(time);
+  return parts.length >= 2 ? formatTime(parts[0]) : time;
+}
+
+/** "08:30 - 10:00" → "10:00 AM" */
+export function formatSlotEnd(time: string): string {
+  const parts = slotParts(time);
+  return parts.length >= 2 ? formatTime(parts[parts.length - 1]) : time;
+}
+
 /** "08:30 - 10:00" → "08:30 – 10:00 AM" */
 export function formatTimeRange(t: string): string {
   if (!t || t === 'TBA' || t === 'Unknown Time') return t;

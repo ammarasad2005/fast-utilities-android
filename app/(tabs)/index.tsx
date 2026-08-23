@@ -39,6 +39,7 @@ import { TIMETABLE_META_KEY, type RawTimetableJSON, type SemesterCalendar, type 
 import { NextClassCard } from '@/components/NextClassCard';
 import { getSavedSchedule, type SavedSchedule } from '@/prefs/savedSchedule';
 import { loadBundles, type CustomBundle } from '@/prefs/bundles';
+import { buildSnapshot, publishNextClassWidget } from '@/widgets/nextClassWidget';
 
 type Feature = {
   id: string;
@@ -196,6 +197,14 @@ export default function HomeScreen() {
   );
   const classLoading =
     !!saved && !liveRaw && (liveSchool === 'FSM' ? fsm.isLoading : fsc.isLoading);
+
+  // Keep the home-screen widget in lock-step with the card (30s tick).
+  // Skipped while the timetable is still loading so we don't flash a
+  // transient "none" state on the widget.
+  useEffect(() => {
+    if (classLoading) return;
+    publishNextClassWidget(buildSnapshot(classStatus, livePlan, !saved, now));
+  }, [classStatus, livePlan, saved, classLoading, now]);
 
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>

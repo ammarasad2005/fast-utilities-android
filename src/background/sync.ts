@@ -1,6 +1,7 @@
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { cacheSet } from '@/api/cache';
+import { syncNextClassWidgetFromCache } from '@/widgets/nextClassWidget';
 import {
   fetchFaculty,
   fetchFSCTimetable,
@@ -43,6 +44,9 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
       fetchSemesterCalendar().then((d) => cacheSet('data:semester', d)),
       fetchStudentEvents().then((d) => cacheSet('data:student_events', d)),
     ]);
+    // Refresh the home-screen widget from the data we just cached, so it stays
+    // current even when the app isn't running (native modules work headless).
+    await syncNextClassWidgetFromCache();
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (err) {
     console.error('[background-sync] failed:', err);
