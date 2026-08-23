@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Next/ongoing class widget. RemoteViews-safe views only. -->
+<!-- Next/ongoing class widget. STRICTLY RemoteViews-whitelisted views only:
+     LinearLayout, TextView, ProgressBar. (Anything else — Space, plain View,
+     ConstraintLayout, custom views — makes the host fail inflation with a
+     RemoteViews.ActionException and the launcher renders the grey
+     "Couldn't add widget" ghost.) -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
   android:id="@+id/widget_root"
   android:layout_width="match_parent"
@@ -41,10 +45,12 @@
     android:maxLines="1"
     android:ellipsize="end" />
 
-  <Space
+  <!-- RemoteViews-safe flexible spacer (empty LinearLayout instead of Space) -->
+  <LinearLayout
     android:layout_width="match_parent"
     android:layout_height="0dp"
-    android:layout_weight="1" />
+    android:layout_weight="1"
+    android:orientation="vertical" />
 
   <TextView
     android:id="@+id/widget_countdown"

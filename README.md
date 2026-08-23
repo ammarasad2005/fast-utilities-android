@@ -178,7 +178,7 @@ eas submit -p android
 |---|---|
 | App name | `FAST Utilities` |
 | Package ID | `com.ammarasad.fastutilities` |
-| `versionCode` / `version` | `8` / `1.4.0` |
+| `versionCode` / `version` | `9` / `1.4.1` |
 | Orientation | `portrait` |
 
 Adaptive icon, monochrome icon and splash screen are all derived from the FAST branding.
