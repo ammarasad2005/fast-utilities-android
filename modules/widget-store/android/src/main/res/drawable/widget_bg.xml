@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Navy glass surface: deep brand-blue gradient with a faint highlight edge.
+     ~95% opacity so the wallpaper subtly tints it; reads premium on light and
+     dark home screens alike. Android 12+ rounds widget corners on its own. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-  <solid android:color="#FFFFFF" />
-  <stroke android:width="1dp" android:color="#14000000" />
-  <!-- Android 12+ applies its own corner radius on top; this covers hosts that don't -->
-  <corners android:radius="20dp" />
+  <gradient
+    android:angle="315"
+    android:startColor="#F2143260"
+    android:centerColor="#F20D2547"
+    android:endColor="#F0071B38" />
+  <stroke android:width="1dp" android:color="#38FFFFFF" />
+  <corners android:radius="22dp" />
 </shape>

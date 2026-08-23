@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="widget_next_class_label">Next / Ongoing Class</string>
+  <string name="widget_label_compact">Next Class — Compact (2×2)</string>
+  <string name="widget_label_standard">Next Class — Standard (3×2)</string>
+  <string name="widget_label_wide">Next Class — Wide (4×2)</string>
+  <string name="widget_label_large">Next Class — Large (4×4)</string>
   <string name="widget_next_class_desc">Shows the class in progress or your next class from your tagged FAST Utilities timetable.</string>
 </resources>

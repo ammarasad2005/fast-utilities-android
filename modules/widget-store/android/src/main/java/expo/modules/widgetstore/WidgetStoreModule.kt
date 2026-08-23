@@ -20,7 +20,7 @@ class WidgetStoreModule : Module() {
         .edit()
         .putString("next_class_snapshot", json)
         .apply()
-      NextClassWidgetProvider.refresh(ctx)
+      WidgetRenderer.refresh(ctx)
       true
     }
   }
