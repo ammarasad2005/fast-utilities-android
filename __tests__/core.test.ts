@@ -477,3 +477,73 @@ describe('weekPlan: attachEntries filtering', () => {
     expect(days).not.toContain('Saturday'); // empty array → dropped
   });
 });
+
+// ─── Scenario flags (cancelled / rescheduled / exam / elective passthrough) ──
+
+describe('scenario flags: web parity (identification layer)', () => {
+  const withFlags: RawTimetableJSON = {
+    '2024': {
+      CS: {
+        repeat: {},
+        regular: {
+          DB: {
+            A: {
+              Monday: [
+                { room: 'ReSch D-414', time: '02:30-03:50', rescheduled: true, exam: false },
+              ],
+              Friday: [],
+            },
+            B: { Monday: [], Friday: [] },
+          },
+          'OS Lab': {
+            A: {
+              Monday: [],
+              Friday: [
+                { room: 'Margala 4 (C-212', time: '08:30-11:15', rescheduled: false, exam: false, cancelled: true },
+              ],
+            },
+          },
+        },
+      },
+    },
+  };
+
+  test('flatten carries rescheduled verbatim (incl. location-shift room text)', () => {
+    const entries = flattenTimetable(withFlags);
+    const db = entries.find((e) => e.courseName === 'DB');
+    expect(db?.rescheduled).toBe(true);
+    expect(db?.room).toBe('ReSch D-414'); // shift marker stays visible, like the web
+    expect(db?.cancelled).toBe(false); // missing flag defaults to false — web does the same
+  });
+
+  test('flatten carries cancelled verbatim', () => {
+    const entries = flattenTimetable(withFlags);
+    const osLab = entries.find((e) => e.courseName === 'OS Lab');
+    expect(osLab?.cancelled).toBe(true);
+    expect(osLab?.rescheduled).toBe(false);
+  });
+
+  test('rescheduled and cancelled slots are exempt from conflict tagging (web rule)', () => {
+    const clash: RawTimetableJSON = {
+      '2024': {
+        CS: {
+          repeat: {},
+          regular: {
+            X: { A: { Monday: [{ room: 'ReSch', time: '08:30-09:50', rescheduled: true, exam: false }], Friday: [] } },
+            Y: { A: { Monday: [{ room: 'C-201', time: '09:00-10:20', rescheduled: false, exam: false }], Friday: [] } },
+          },
+        },
+      },
+    };
+    const entries = flattenTimetable(clash);
+    expect(detectConflicts(entries).size).toBe(0); // rescheduled slot never flags a clash
+  });
+
+  test('cancelled slots do not occupy a room (free-rooms parity)', () => {
+    expect(Object.keys(buildRoomCalendar(withFlags)).sort()).toEqual(['ReSch D-414'.trim()].filter(Boolean).length ? ['ReSch D-414'] : []);
+    // The cancelled "Margala 4 (C-212" slot must not appear as occupied
+    const cal = buildRoomCalendar(withFlags);
+    expect(Object.keys(cal)).not.toContain('Margala 4 (C-212');
+    expect(Object.keys(cal)).toContain('ReSch D-414');
+  });
+});

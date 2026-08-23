@@ -656,6 +656,9 @@ function ClassRow({
   const [pickerOpen, setPickerOpen] = useState(false);
   const isLab = entry.type === 'lab';
   const cancelled = entry.cancelled;
+  // Scenario badges mirror the web TimetableCard cascade; when any scenario
+  // badge shows, the plain Lab/Lecture badge is suppressed (web parity).
+  const hasScenario = cancelled || entry.rescheduled || entry.exam;
 
   return (
     <View style={[styles.classCard, cancelled && { opacity: 0.5 }]}>
@@ -667,7 +670,7 @@ function ClassRow({
           <Text style={[styles.className, cancelled && { textDecorationLine: 'line-through' }]}>
             {entry.courseName}
           </Text>
-          {isLab ? (
+          {isLab && !hasScenario ? (
             <View style={[styles.typeBadge, { backgroundColor: colors.infoBg }]}>
               <Text style={[styles.typeBadgeText, { color: colors.info }]}>LAB</Text>
             </View>
@@ -680,6 +683,16 @@ function ClassRow({
           {cancelled ? (
             <View style={[styles.typeBadge, { backgroundColor: colors.dangerBg }]}>
               <Text style={[styles.typeBadgeText, { color: colors.danger }]}>CANCELLED</Text>
+            </View>
+          ) : null}
+          {entry.exam ? (
+            <View style={[styles.typeBadge, { backgroundColor: colors.dangerBg }]}>
+              <Text style={[styles.typeBadgeText, { color: colors.danger }]}>EXAM</Text>
+            </View>
+          ) : null}
+          {entry.rescheduled ? (
+            <View style={[styles.typeBadge, { backgroundColor: colors.warningBg }]}>
+              <Text style={[styles.typeBadgeText, { color: colors.warning }]}>RESCHEDULED</Text>
             </View>
           ) : null}
         </View>

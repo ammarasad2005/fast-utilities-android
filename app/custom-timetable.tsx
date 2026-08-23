@@ -733,19 +733,48 @@ export default function CustomTimetableScreen() {
 function CustomClassRow({ entry, conflict }: { entry: TimetableEntry; conflict: boolean }) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
+  const cancelled = entry.cancelled;
   return (
-    <View style={[styles.classCard, conflict && styles.classCardConflict]}>
+    <View style={[styles.classCard, conflict && styles.classCardConflict, cancelled && { opacity: 0.55 }]}>
       <View style={styles.classTime}>
         <Text style={styles.classTimeText}>{formatTimeRange(entry.time)}</Text>
       </View>
       <View style={styles.classBody}>
-        <Text style={styles.className}>
+        <Text style={[styles.className, cancelled && { textDecorationLine: 'line-through' }]}>
           {entry.courseName}
           <Text style={styles.classSection}> · {entry.section}</Text>
         </Text>
         <Text style={styles.classMeta}>
           Room {entry.room} · {entry.department}-{entry.batch ? entry.batch.slice(-2) : ''}
         </Text>
+        {/* Scenario badges — same cascade the web's TimetableCard uses. */}
+        <View style={styles.badgeRow}>
+          {cancelled ? (
+            <View style={[styles.tagBadge, { backgroundColor: colors.dangerBg }]}>
+              <Text style={[styles.tagBadgeText, { color: colors.danger }]}>CANCELLED</Text>
+            </View>
+          ) : null}
+          {entry.category === 'repeat' ? (
+            <View style={[styles.tagBadge, { backgroundColor: colors.warningBg }]}>
+              <Text style={[styles.tagBadgeText, { color: colors.warning }]}>REPEAT</Text>
+            </View>
+          ) : null}
+          {entry.exam ? (
+            <View style={[styles.tagBadge, { backgroundColor: colors.dangerBg }]}>
+              <Text style={[styles.tagBadgeText, { color: colors.danger }]}>EXAM</Text>
+            </View>
+          ) : null}
+          {entry.rescheduled ? (
+            <View style={[styles.tagBadge, { backgroundColor: colors.warningBg }]}>
+              <Text style={[styles.tagBadgeText, { color: colors.warning }]}>RESCHEDULED</Text>
+            </View>
+          ) : null}
+          {entry.type === 'lab' && !cancelled && !entry.rescheduled && !entry.exam ? (
+            <View style={[styles.tagBadge, { backgroundColor: colors.infoBg }]}>
+              <Text style={[styles.tagBadgeText, { color: colors.info }]}>LAB</Text>
+            </View>
+          ) : null}
+        </View>
         {conflict ? (
           <View style={styles.inlineConflict}>
             <Ionicons name="warning" size={12} color={colors.danger} />
@@ -872,8 +901,11 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   classBody: { flex: 1 },
   className: { fontSize: 15, fontWeight: '600', color: colors.text },
   classSection: { fontSize: 13, color: colors.textSecondary, fontWeight: '400' },
-  classMeta: { fontSize: 12, color: colors.textSecondary, marginTop: 4 },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5 },
+  tagBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+  tagBadgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.6 },
   inlineConflict: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+  classMeta: { fontSize: 12, color: colors.textSecondary, marginTop: 4 },
   inlineConflictText: { fontSize: 12, color: colors.danger, fontWeight: '600' },
   pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   pickerHandle: {
