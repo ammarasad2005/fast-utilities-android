@@ -50,5 +50,13 @@
         android:name="android.appwidget.provider"
         android:resource="@xml/next_class_widget_large" />
     </receiver>
+    <!-- Refresh-on-unlock: re-render every placed widget the moment the
+         keyguard is dismissed (any unlock method), even with the app killed. -->
+    <receiver android:name=".WidgetUnlockReceiver" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.USER_PRESENT" />
+      </intent-filter>
+    </receiver>
+
   </application>
 </manifest>
