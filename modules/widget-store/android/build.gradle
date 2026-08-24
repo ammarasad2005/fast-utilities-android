@@ -6,6 +6,14 @@ plugins {
 group = 'expo.modules.widgetstore'
 version = '0.1.0'
 
+dependencies {
+  // Same version expo-background-task pins (it is already in the app via that
+  // package, so this adds no new native code to the APK); needed to enqueue a
+  // one-off BackgroundTaskWork from the widget's manual-refresh receiver.
+  implementation "androidx.work:work-runtime-ktx:2.9.1"
+  implementation(project(":expo-background-task"))
+}
+
 android {
   namespace "expo.modules.widgetstore"
   defaultConfig {
