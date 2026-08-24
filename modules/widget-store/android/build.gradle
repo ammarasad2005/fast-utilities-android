@@ -11,7 +11,10 @@ dependencies {
   // package, so this adds no new native code to the APK); needed to enqueue a
   // one-off BackgroundTaskWork from the widget's manual-refresh receiver.
   implementation "androidx.work:work-runtime-ktx:2.9.1"
-  implementation(project(":expo-background-task"))
+  // expo-background-task ships as a prebuilt AAR from the autolinking local
+  // maven repo (not a project include). NB: keep this pin in sync with the
+  // expo-background-task version in package.json (currently ~57.0.12).
+  implementation "host.exp.exponent:expo.modules.backgroundtask:57.0.12"
 }
 
 android {
