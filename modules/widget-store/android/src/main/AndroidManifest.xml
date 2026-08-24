@@ -58,5 +58,12 @@
       </intent-filter>
     </receiver>
 
+    <!-- Manual refresh: ↻ icon in every widget variant taps fire this. -->
+    <receiver android:name=".WidgetRefreshReceiver" android:exported="false">
+      <intent-filter>
+        <action android:name="expo.modules.widgetstore.action.MANUAL_REFRESH" />
+      </intent-filter>
+    </receiver>
+
   </application>
 </manifest>

@@ -2,7 +2,7 @@
   "expo": {
     "name": "FAST Utilities",
     "slug": "fast-utilities-android-v1",
-    "version": "1.6.1",
+    "version": "1.6.2",
     "description": "Timetables, exam schedules, free rooms, faculty info, semester plan and campus events for FAST-NU Islamabad \u2014 the Android companion to the FAST Exam Table web app.",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "com.ammarasad.fastutilities",
-      "versionCode": 12,
+      "versionCode": 13,
       "permissions": [
         "android.permission.INTERNET"
       ],

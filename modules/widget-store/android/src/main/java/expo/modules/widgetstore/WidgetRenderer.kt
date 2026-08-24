@@ -99,6 +99,15 @@ object WidgetRenderer {
       views.setOnClickPendingIntent(R.id.widget_root, pi)
     }
 
+    // ↻ icon → instant manual refresh (re-render in place, no app launch)
+    val refreshIntent = Intent(WidgetRefreshReceiver.ACTION)
+      .setComponent(ComponentName(context, WidgetRefreshReceiver::class.java))
+    val refreshPi = PendingIntent.getBroadcast(
+      context, 1, refreshIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+    views.setOnClickPendingIntent(R.id.widget_refresh, refreshPi)
+
     manager.updateAppWidget(widgetId, views)
   }
 

@@ -9,6 +9,11 @@
   android:padding="18dp"
   android:background="@drawable/widget_bg">
 
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal">
+
   <TextView
     android:id="@+id/widget_header"
     android:layout_width="wrap_content"
@@ -18,6 +23,26 @@
     android:textStyle="bold"
     android:letterSpacing="0.14"
     android:textColor="#FFC24B" />
+
+  <LinearLayout
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:layout_weight="1"
+    android:orientation="horizontal" />
+
+  <ImageButton
+    android:id="@+id/widget_refresh"
+    android:layout_width="22dp"
+    android:layout_height="22dp"
+    android:layout_gravity="center_vertical"
+    android:contentDescription="Refresh widget now"
+    android:background="@android:color/transparent"
+    android:scaleType="centerInside"
+    android:src="@drawable/ic_widget_refresh" />
+
+  </LinearLayout>
+
+
 
   <TextView
     android:id="@+id/widget_course"
