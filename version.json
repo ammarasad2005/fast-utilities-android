@@ -1,6 +1,6 @@
 {
   "versionCode": 14,
   "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android-v1/releases/download/v1.7.0/app-release.apk",
-  "notes": "Widget refresh icon redesign, compact widget now shows section and time, in-app updates, faculty share/copy, semester pulse, About refresh.",
+  "notes": "Widget refresh icon now fits each widget size, and Compact shows section + class time. New: in-app updates, share/copy faculty contacts (rows + details), Semester pulse with holidays, About refresh.",
   "publishedAt": "2026-08-25"
 }
