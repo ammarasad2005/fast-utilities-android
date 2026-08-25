@@ -40,6 +40,8 @@ import { NextClassCard } from '@/components/NextClassCard';
 import { getSavedSchedule, type SavedSchedule } from '@/prefs/savedSchedule';
 import { loadBundles, type CustomBundle } from '@/prefs/bundles';
 import { buildSnapshot, publishNextClassWidget } from '@/widgets/nextClassWidget';
+import { UpdateBanner } from '@/components/UpdateBanner';
+import { checkForUpdateNow, type RemoteVersion } from '@/updates/checkUpdate';
 
 type Feature = {
   id: string;
@@ -109,6 +111,18 @@ export default function HomeScreen() {
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000); // 30s refresh
     return () => clearInterval(timer);
+  }, []);
+
+  // Sideload update check — throttled inside (only a few network hits/day).
+  const [updateInfo, setUpdateInfo] = useState<RemoteVersion | null>(null);
+  useEffect(() => {
+    let active = true;
+    checkForUpdateNow().then((v) => {
+      if (active) setUpdateInfo(v);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const fsc = useCachedData<RawTimetableJSON>('data:timetable:FSC', fetchFSCTimetable, CACHE_TTL.timetable);
@@ -209,6 +223,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {updateInfo ? <UpdateBanner remote={updateInfo} onDismiss={() => setUpdateInfo(null)} /> : null}
         {/* Header */}
         <View style={styles.header}>
           <Image source={require('../../assets/images/icon.png')} style={styles.logo} />
@@ -261,7 +276,11 @@ export default function HomeScreen() {
 
             {/* Thin semester timeline, compressed */}
             {timeline ? (
-              <View style={styles.timelineCardCompact}>
+              <Pressable
+                style={styles.timelineCardCompact}
+                onPress={() => router.push('/semester' as any)}
+                accessibilityLabel="Semester timeline — open semester schedule"
+              >
             <View style={styles.timelineMeta}>
               <Text style={styles.timelineWeek}>
                 {timeline.week ? `Week ${timeline.week}` : 'Semester progress'}
@@ -285,7 +304,7 @@ export default function HomeScreen() {
                 </View>
               ))}
             </View>
-              </View>
+              </Pressable>
             ) : null}
           </View>
 

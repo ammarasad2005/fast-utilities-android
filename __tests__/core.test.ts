@@ -8,12 +8,13 @@
 import { flattenTimetable, filterTimetable, formatTime, formatTimeRange, getAvailableSections, extractTimeFromCourseName, detectConflicts, makeKey, computeDisplayedEntries } from '@/core/timetable';
 import { filterExams, filterSummerExams, matchesSummerCourse, groupByDay, sortByChronological } from '@/core/exams';
 import { buildRoomCalendar, getAvailableRooms, STANDARD_SLOTS, groupRoomsByBlock, mergeRoomCalendars } from '@/core/roomLogic';
-import { flattenFaculty, searchFaculty, getFacultyRank } from '@/core/faculty';
+import { flattenFaculty, searchFaculty, getFacultyRank, formatFacultyShareText } from '@/core/faculty';
 import { getCalendarCells, parseEventDate } from '@/core/events';
 import { resolveWeekPlan, attachEntries, getEffectiveTodayDate, isTomorrowPreview } from '@/core/weekPlan';
 import { computeClassStatus } from '@/core/liveClass';
 import { buildSnapshot, epochFor } from '@/widgets/nextClassWidget';
-import { getSemesterProgress, getSemesterMilestones, getSemesterStartDate, getSemesterEndDate, getFinalExamsEndDate, getSemesterWeekNumber } from '@/core/semester';
+import { parseRemoteVersion, isUpdateAvailable, localVersionCode } from '@/updates/checkUpdate';
+import { getSemesterProgress, getSemesterMilestones, getSemesterStartDate, getSemesterEndDate, getFinalExamsEndDate, getSemesterWeekNumber, computeCurrentPhase } from '@/core/semester';
 import type { RawTimetableJSON, ExamEntry, RawFacultyDepartment, TimetableEntry, SemesterCalendar } from '@/core/types';
 
 // ─── Timetable ────────────────────────────────────────────────────────────────
@@ -718,6 +719,7 @@ describe('nextClassWidget: buildSnapshot', () => {
     expect(snap.targetEpochMs).toBe(new Date(2026, 7, 19, 9, 50, 0).getTime());
     expect(snap.totalMin).toBe(80);
     expect(snap.sub).toBe('ends 09:50 AM');
+    expect(snap.subTime).toBe('ends 09:50 AM');
     expect(snap.extra).toBe(0);
     expect(snap.updatedAt).toBe(at('2026-08-19T09:00:00').getTime());
   });
@@ -733,6 +735,7 @@ describe('nextClassWidget: buildSnapshot', () => {
     expect(snap.targetEpochMs).toBe(new Date(2026, 7, 19, 8, 30, 0).getTime());
 
     expect(snap.sub).toBe('starts 08:30 AM');
+    expect(snap.subTime).toBe('starts 08:30 AM');
     expect(snap.totalMin).toBeUndefined();
   });
 
@@ -747,6 +750,8 @@ describe('nextClassWidget: buildSnapshot', () => {
     expect(snap.targetEpochMs).toBe(new Date(2026, 7, 20, 8, 30, 0).getTime());
 
     expect(snap.sub).toBe('Thu · 20 Aug · 08:30 AM');
+    // compact variant drops day/date entirely
+    expect(snap.subTime).toBe('starts 08:30 AM');
   });
 
   it('lab entries and TBA rooms format the meta line like the card', () => {
@@ -777,5 +782,116 @@ describe('nextClassWidget: buildSnapshot', () => {
   it('epochFor builds the local-time target consistently', () => {
     expect(epochFor('2026-08-19', 9 * 60 + 50)).toBe(new Date(2026, 7, 19, 9, 50, 0).getTime());
     expect(epochFor('2026-12-31', 0)).toBe(new Date(2026, 11, 31, 0, 0, 0).getTime());
+  });
+});
+
+describe('updates/checkUpdate', () => {
+  it('parses a valid remote manifest and rejects junk', () => {
+    expect(parseRemoteVersion({ versionCode: 15, apkUrl: 'https://example.com/a.apk', notes: 'x' })).toEqual({
+      versionCode: 15,
+      apkUrl: 'https://example.com/a.apk',
+      notes: 'x',
+      publishedAt: undefined,
+    });
+    expect(parseRemoteVersion(null)).toBeNull();
+    expect(parseRemoteVersion({ apkUrl: 'x' })).toBeNull();
+    expect(parseRemoteVersion({ versionCode: '15', apkUrl: 'x' })).toBeNull();
+  });
+
+  it('flags an update only for a numerically newer versionCode', () => {
+    const newer = { versionCode: 99999, apkUrl: 'https://example.com/a.apk' };
+    expect(isUpdateAvailable(newer)).toBe(true);
+    expect(isUpdateAvailable({ versionCode: localVersionCode(), apkUrl: 'https://example.com/a.apk' })).toBe(false);
+    expect(isUpdateAvailable(null)).toBe(false);
+  });
+});
+
+describe('computeCurrentPhase', () => {
+  const cal = {
+    semester: 'Fall 2025',
+    keyDates: [
+      { label: 'First Day of Classes', date: '2025-08-18', type: 'academic' },
+      { label: 'First Sessional Examinations', date: '2025-09-22', endDate: '2025-09-26', type: 'exam' },
+      { label: 'Second Sessional Examinations', date: '2025-11-03', endDate: '2025-11-07', type: 'exam' },
+      { label: 'Last Day of Classes', date: '2025-12-05', type: 'academic' },
+      { label: 'Final Examinations', date: '2025-12-08', endDate: '2025-12-18', type: 'exam' },
+    ],
+    holidays: [
+      { label: 'Independence Day', date: '2025-08-14', type: 'national' as const },
+      { label: 'Eid Milad-un-Nabi', date: '2025-09-05', endDate: '2025-09-06', type: 'religious' as const },
+    ],
+  };
+  const at = (iso: string) => new Date(iso + 'T12:00:00');
+
+  it('reports regular classes with week context mid-semester', () => {
+    const p = computeCurrentPhase(cal as any, at('2025-10-15'));
+    expect(p?.current.kind).toBe('classes');
+    expect(p?.current.label).toBe('Regular classes');
+    expect(p?.current.context).toMatch(/^Week \d+ of \d+$/);
+    expect(p?.next?.label).toBe('Second Sessional Examinations');
+    expect(p?.next?.daysUntil).toBe(19);
+  });
+
+  it('an active holiday wins over class phases', () => {
+    const p = computeCurrentPhase(cal as any, at('2025-09-05'));
+    expect(p?.current.kind).toBe('holiday');
+    expect(p?.current.label).toBe('Eid Milad-un-Nabi');
+    expect(p?.current.context).toBe('Ends in 1d');
+    // next excludes the active one
+    expect(p?.next?.label).toBe('First Sessional Examinations');
+  });
+
+  it('inside an exam window the exam is the current phase', () => {
+    const p = computeCurrentPhase(cal as any, at('2025-11-05'));
+    expect(p?.current.kind).toBe('exam');
+    expect(p?.current.label).toBe('Second Sessional Examinations');
+    expect(p?.next?.label).toBe('Last Day of Classes');
+  });
+
+  it('before classes and after finals get their own phases', () => {
+    const before = computeCurrentPhase(cal as any, at('2025-08-10'));
+    expect(before?.current.kind).toBe('pre-semester');
+    expect(before?.next?.label).toBe('Independence Day');
+    const after = computeCurrentPhase(cal as any, at('2025-12-25'));
+    expect(after?.current.kind).toBe('post-semester');
+    expect(after?.next).toBeNull();
+  });
+
+  it('returns null when the calendar has no semester bounds', () => {
+    expect(
+      computeCurrentPhase({ keyDates: [{ label: 'Something', date: '2025-01-01', type: 'deadline' }] } as any, at('2025-01-01'))
+    ).toBeNull();
+  });
+});
+
+describe('formatFacultyShareText', () => {
+  const member = {
+    name: 'Dr. Ayesha Khan',
+    status: 'Assistant Professor',
+    email: 'ayesha.khan@nu.edu.pk',
+    office_room: 'C-204',
+    linkedin_profile: 'https://linkedin.com/in/ak',
+    profile_url: 'https://isb.nu.edu.pk/faculty/ak',
+    image_url: 'https://x/y.png',
+    deptKey: 'CS' as const,
+  };
+
+  it('builds a well-structured multi-line card', () => {
+    expect(formatFacultyShareText(member)).toBe(
+      [
+        'Dr. Ayesha Khan — Assistant Professor',
+        'Computer Science (CS)',
+        'FAST-NU Islamabad',
+        'Email: ayesha.khan@nu.edu.pk',
+        'Office: C-204',
+        'Profile: https://isb.nu.edu.pk/faculty/ak',
+      ].join('\n')
+    );
+  });
+
+  it('omits missing optional fields', () => {
+    const t = formatFacultyShareText({ ...member, office_room: null, profile_url: '', status: '' });
+    expect(t).toBe(['Dr. Ayesha Khan', 'Computer Science (CS)', 'FAST-NU Islamabad', 'Email: ayesha.khan@nu.edu.pk'].join('\n'));
+    expect(t).not.toContain('Office');
   });
 });

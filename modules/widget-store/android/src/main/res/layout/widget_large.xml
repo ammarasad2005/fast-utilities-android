@@ -32,12 +32,12 @@
 
   <ImageButton
     android:id="@+id/widget_refresh"
-    android:layout_width="22dp"
-    android:layout_height="22dp"
+    android:layout_width="36dp"
+    android:layout_height="36dp"
     android:layout_gravity="center_vertical"
     android:contentDescription="Refresh widget now"
     android:background="@android:color/transparent"
-    android:scaleType="centerInside"
+    android:scaleType="fitCenter"
     android:src="@drawable/ic_widget_refresh" />
 
   </LinearLayout>

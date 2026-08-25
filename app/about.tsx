@@ -9,6 +9,7 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 
 export default function AboutScreen() {
   const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const version = Constants.expoConfig?.version ?? '1.0.0';
 
   return (
@@ -19,10 +20,33 @@ export default function AboutScreen() {
           <Text style={styles.appName}>FAST Utilities</Text>
           <Text style={styles.version}>Version {version} · Android</Text>
           <Text style={styles.body}>
-            A native companion to the FAST Exam Table web app — timetables, exam schedules,
-            free rooms, faculty info, semester plan and campus events for FAST-NU Islamabad,
-            all in one place.
+            The native companion for FAST-NU Islamabad students — timetables, exam schedules,
+            free rooms, faculty info, semester plan and campus events, all in one place.
           </Text>
+        </Card>
+
+        <Card>
+          <Text style={styles.devEyebrow}>Developer</Text>
+          <Text style={styles.devName}>Muhammad Ammar Asad</Text>
+          <Text style={styles.body}>BS Computer Science · FAST-NU Islamabad</Text>
+          <View style={styles.devIcons}>
+            <Pressable
+              onPress={() => Linking.openURL('https://www.linkedin.com/in/muhammad-ammar-asad')}
+              style={styles.devIconBtn}
+              android_ripple={{ color: colors.border, borderless: true, radius: 22 }}
+              accessibilityLabel="Open LinkedIn profile"
+            >
+              <Ionicons name="logo-linkedin" size={22} color={colors.brand} />
+            </Pressable>
+            <Pressable
+              onPress={() => Linking.openURL('https://github.com/ammarasad2005')}
+              style={styles.devIconBtn}
+              android_ripple={{ color: colors.border, borderless: true, radius: 22 }}
+              accessibilityLabel="Open GitHub profile"
+            >
+              <Ionicons name="logo-github" size={22} color={colors.text} />
+            </Pressable>
+          </View>
         </Card>
 
         <View style={{ marginTop: 16, gap: 10 }}>
@@ -34,15 +58,16 @@ export default function AboutScreen() {
           />
           <LinkRow
             icon="logo-github"
-            title="Source (web)"
-            subtitle="github.com/ammarasad2005/FAST-Utilities"
-            onPress={() => Linking.openURL('https://github.com/ammarasad2005/FAST-Utilities')}
+            title="App source"
+            subtitle="github.com/ammarasad2005/fast-utilities-android-v1"
+            onPress={() => Linking.openURL('https://github.com/ammarasad2005/fast-utilities-android-v1')}
           />
         </View>
 
         <Text style={styles.note}>
-          All data is served by the existing FAST Exam Table backend on Vercel. The mobile app
-          caches recently-viewed data so it keeps working offline; refresh to get the latest.
+          Data comes from the campus data service on Vercel. The app caches recently-viewed
+          screens so everything keeps working offline; pull to refresh for the latest. When a
+          new build is published, the app will offer to update itself in place.
         </Text>
       </ScrollView>
     </View>
@@ -93,4 +118,23 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   linkTitle: { fontSize: 15, fontWeight: '600', color: colors.text },
   linkSubtitle: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
   note: { fontSize: 12, color: colors.textTertiary, lineHeight: 18, marginTop: 24 },
+  devEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.9,
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+  },
+  devName: { fontSize: 18, fontWeight: '800', color: colors.text, marginTop: 4 },
+  devIcons: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  devIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.raised,
+  },
 });

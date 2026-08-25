@@ -130,12 +130,16 @@ object WidgetRenderer {
     views.setTextViewText(R.id.widget_countdown, countdown)
     views.setTextColor(R.id.widget_countdown, if (ongoing) C_COUNTDOWN_ONGOING else C_COUNTDOWN_NEXT)
 
-    if (full) {
-      views.setTextViewText(R.id.widget_meta, snap.optString("meta", ""))
-      views.setTextColor(R.id.widget_meta, C_META)
-      views.setTextViewText(R.id.widget_sub, snap.optString("sub", ""))
-      views.setTextColor(R.id.widget_sub, C_SUB)
+    // meta + sub exist in every layout; compact uses the time-only sub
+    views.setTextViewText(R.id.widget_meta, snap.optString("meta", ""))
+    views.setTextColor(R.id.widget_meta, C_META)
+    views.setTextViewText(
+      R.id.widget_sub,
+      if (full) snap.optString("sub", "") else snap.optString("subTime", snap.optString("sub", ""))
+    )
+    views.setTextColor(R.id.widget_sub, C_SUB)
 
+    if (full) {
       if (ongoing) {
         val totalMin = snap.optInt("totalMin", 0).coerceAtLeast(1)
         val donePct = (((totalMin - deltaMin.coerceAtLeast(0)).toFloat() / totalMin) * 100)
@@ -163,10 +167,10 @@ object WidgetRenderer {
     views.setTextViewText(R.id.widget_course, title)
     views.setTextColor(R.id.widget_course, C_EMPTY_TITLE)
     views.setTextViewText(R.id.widget_countdown, "")
+    views.setTextViewText(R.id.widget_meta, "")
+    views.setTextViewText(R.id.widget_sub, subtitle)
+    views.setTextColor(R.id.widget_sub, C_EMPTY_SUB)
     if (full) {
-      views.setTextViewText(R.id.widget_meta, "")
-      views.setTextViewText(R.id.widget_sub, subtitle)
-      views.setTextColor(R.id.widget_sub, C_EMPTY_SUB)
       views.setViewVisibility(R.id.widget_progress, View.GONE)
       views.setViewVisibility(R.id.widget_extra, View.GONE)
     }

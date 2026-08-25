@@ -17,11 +17,11 @@ Timetables, exam schedules, free rooms, faculty info, the semester plan and camp
 | **Timetable** | Weekly class schedule for FSC & FSM with list **and grid** views, image export/share, and search. |
 | **Custom Timetable** | Build a clash-checked schedule from any classes, with time-clash highlighting and saved bundles. |
 | **Free Rooms** | Campus-wide room availability (no school split), grouped by block, for a specific time slot **or** a custom time range. |
-| **Faculty Info** | Searchable directory with emails, offices and profiles (tap to copy). |
-| **Semester Schedule** | Academic calendar with key dates, **holidays**, sessionals and finals, plus an "up next" list. |
+| **Faculty Info** | Searchable directory with emails, offices and profiles. Copy or share a well-structured contact card from any **row** (trailing icons) or the **detail modal** — copy goes to the clipboard, share opens the system sheet (WhatsApp etc.). |
+| **Semester Schedule** | Academic calendar with key dates, **holidays**, sessionals and finals, plus an "up next" list. A **Semester pulse** hero card at the top shows the *current* stage — holidays included — and what's next. Tapping the home timeline bar opens this screen. |
 | **Semester Timeline** | A sleek live progress bar (with S1/S2/FE markers) on the landing screen. |
 | **Next / Ongoing Class** | Bento card on the landing screen tracking your **tagged timetable** (default config or a saved custom bundle): shows the class in progress with a live "← time left" countdown and progress bar, or the next class with "in Xh Ym" (+ date when it's not today). Uses the web app's exact rules — 5:30 PM rollover to tomorrow, semester-start suppression, cancelled/rescheduled handling, parallel-class grouping. |
-| **Home-screen Widget (Android)** | Native home-screen widget (`modules/widget-store`, a local Expo module — zero added npm dependencies) showing the same Next / Ongoing class snapshot as the in-app card. **Four sizes in the picker** — Compact 2×2, Standard 3×2, Wide 4×2, Large 4×4 — each resizable after placement, and resizing *live-switches the layout* (compact ↔ standard ↔ large buckets via `onAppWidgetOptionsChanged`). Navy-glass gradient surface that works on any wallpaper; ongoing classes get a green accent + end-time progress bar. Tap opens the app. Refreshed on every app-open state change (30 s tick) and by the background sync task even when the app is killed; the OS also re-renders it every 30 min, and every phone unlock triggers an immediate refresh (`USER_PRESENT` receiver). A ↻ icon in the header manually refreshes in place (`WidgetRefreshReceiver`): instant repaint with exact countdown math, then a one-off WorkManager run reuses the JS background task itself (network refetch + recompute from the same persisted inputs the in-app card uses) and re-publishes — within seconds the widget shows exactly what the app shows. |
+| **Home-screen Widget (Android)** | Native home-screen widget (`modules/widget-store`, a local Expo module — zero added npm dependencies) showing the same Next / Ongoing class snapshot as the in-app card. **Four sizes in the picker** — Compact 2×2, Standard 3×2, Wide 4×2, Large 4×4 — each resizable after placement, and resizing *live-switches the layout* (compact ↔ standard ↔ large buckets via `onAppWidgetOptionsChanged`). Navy-glass gradient surface that works on any wallpaper; ongoing classes get a green accent + end-time progress bar. Tap opens the app. Refreshed on every app-open state change (30 s tick) and by the background sync task even when the app is killed; the OS also re-renders it every 30 min, and every phone unlock triggers an immediate refresh (`USER_PRESENT` receiver). The `↻` refresh icon is sized per variant (larger on compact/large); the **Compact 2×2** layout shows course, section/room and the slot time (day/date are dropped). A ↻ tap manually refreshes in place (`WidgetRefreshReceiver`): instant repaint with exact countdown math, then a one-off WorkManager run reuses the JS background task itself (network refetch + recompute from the same persisted inputs the in-app card uses) and re-publishes — within seconds the widget shows exactly what the app shows. |
 | **Branded Launch Screen** | A ~2-second brand moment at cold start: the university emblem rises on the app's navy gradient, name + tagline + version pill stagger in, and a "Made with ♥ by Ammar Asad · @ammarasad2005" credit anchors the bottom. The native splash (same navy + emblem) hands off invisibly to the animated JS layer; it never waits on the network and is hard-capped so the app can never be held hostage. |
 | **Campus Events** | Monthly calendar of student events, seminars and drives. |
 
@@ -142,6 +142,21 @@ It is **manual-trigger only** (`workflow_dispatch`) — it never runs automatica
 
 > Same caveat as Colab: this APK is signed with the Expo debug keystore (fine for sideloading,
 > not for Google Play). For Play, configure a release keystore or use EAS.
+
+### In-app updates (sideload distribution)
+
+The app is distributed as a direct-download APK (and via APK hosts such as APKPure), so it
+manages its own updates:
+
+1. Every CI build also **publishes a GitHub Release** (`v<version>`) with the APK attached and
+   commits an updated [`version.json`](version.json) to the repo (`{versionCode, apkUrl, notes}").
+2. On the home screen the app checks that manifest (throttled); when a **newer versionCode** is
+   published, a banner appears with the changelog note.
+3. Tapping **Download & Install** downloads the release APK inside the app (progress shown) and
+   hands it to the Android installer. Because every build is signed with the same key, this is a
+   normal in-place update — settings, saved schedules and caches are preserved. On Android 8+
+   the installer one-time asks to allow "Install unknown apps" for this app (the banner
+   deep-links that setting).
 
 ## Building for Android (EAS)
 

@@ -15,6 +15,7 @@ dependencies {
   // maven repo (not a project include). NB: keep this pin in sync with the
   // expo-background-task version in package.json (currently ~57.0.12).
   implementation "host.exp.exponent:expo.modules.backgroundtask:57.0.12"
+  implementation "androidx.core:core:1.15.0"
 }
 
 android {

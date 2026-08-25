@@ -11,10 +11,20 @@ import {
   getSemesterStartDate,
   getSemesterEndDate,
   getUpcomingKeyDates,
+  computeCurrentPhase,
+  type PulseKind,
 } from '@/core/semester';
 import type { KeyDate, SemesterCalendar } from '@/core/types';
 import { ErrorState, LoadingState, OfflineNotice, SectionHeader } from '@/components/ui';
 import { ScreenHeader } from '@/components/ScreenHeader';
+
+const PULSE_TINT: Record<PulseKind, { color: string; bg: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  holiday: { color: '#B45309', bg: '#FFFBEB', icon: 'partly-sunny' },
+  exam: { color: '#B45309', bg: '#FFFBEB', icon: 'ribbon' },
+  classes: { color: '#1D4ED8', bg: '#EFF6FF', icon: 'school' },
+  'pre-semester': { color: '#0F766E', bg: '#F0FDFA', icon: 'hourglass' },
+  'post-semester': { color: '#475569', bg: '#F8FAFC', icon: 'checkmark-done' },
+};
 
 const TYPE_STYLE: Record<string, { color: string; bg: string; icon: keyof typeof Ionicons.glyphMap }> = {
   exam: { color: '#B45309', bg: '#FFFBEB', icon: 'ribbon' },
@@ -29,6 +39,7 @@ export default function SemesterScreen() {
     useCachedData<SemesterCalendar>('data:semester', fetchSemesterCalendar, CACHE_TTL.semester);
 
   const upcoming = useMemo(() => (calendar ? getUpcomingKeyDates(calendar, 5) : []), [calendar]);
+  const pulse = useMemo(() => (calendar ? computeCurrentPhase(calendar) : null), [calendar]);
 
   if (isLoading) return <LoadingState label="Loading semester calendar…" />;
   if (!calendar || error) return <ErrorState message={error ?? undefined} onRetry={refresh} />;
@@ -47,6 +58,49 @@ export default function SemesterScreen() {
         {isFromCache ? (
           <View style={{ marginBottom: 12 }}>
             <OfflineNotice cached />
+          </View>
+        ) : null}
+
+        {/* Semester pulse — current stage + what comes next (holidays included) */}
+        {pulse ? (
+          <View style={styles.pulseCard}>
+            <View style={styles.pulseRow}>
+              <View style={[styles.pulseIcon, { backgroundColor: PULSE_TINT[pulse.current.kind].bg }]}>
+                <Ionicons name={PULSE_TINT[pulse.current.kind].icon} size={18} color={PULSE_TINT[pulse.current.kind].color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pulseEyebrow}>Now</Text>
+                <Text style={styles.pulseLabel}>{pulse.current.label}</Text>
+                <Text style={styles.pulseSub}>{pulse.current.dates}</Text>
+              </View>
+              {pulse.current.context ? (
+                <View style={[styles.pulseBadge, { backgroundColor: PULSE_TINT[pulse.current.kind].bg }]}>
+                  <Text style={[styles.pulseBadgeText, { color: PULSE_TINT[pulse.current.kind].color }]}>
+                    {pulse.current.context}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            {pulse.next ? (
+              <>
+                <View style={styles.pulseDivider} />
+                <View style={styles.pulseRow}>
+                  <View style={[styles.pulseIcon, { backgroundColor: PULSE_TINT[pulse.next.kind].bg }]}>
+                    <Ionicons name={PULSE_TINT[pulse.next.kind].icon} size={18} color={PULSE_TINT[pulse.next.kind].color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.pulseEyebrow}>Up next</Text>
+                    <Text style={styles.pulseLabel}>{pulse.next.label}</Text>
+                    <Text style={styles.pulseSub}>{pulse.next.dates}</Text>
+                  </View>
+                  <View style={[styles.pulseBadge, { backgroundColor: colors.brand }]}>
+                    <Text style={[styles.pulseBadgeText, { color: colors.onBrand }]}>
+                      {pulse.next.daysUntil === 0 ? 'Today' : `${pulse.next.daysUntil}d`}
+                    </Text>
+                  </View>
+                </View>
+              </>
+            ) : null}
           </View>
         ) : null}
 
@@ -161,6 +215,38 @@ function TypeBadge({ type }: { type: string }) {
 }
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  pulseCard: {
+    backgroundColor: colors.raised,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    marginBottom: 16,
+  },
+  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  pulseIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pulseEyebrow: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+  },
+  pulseLabel: { fontSize: 15, fontWeight: '800', color: colors.text, marginTop: 1 },
+  pulseSub: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
+  pulseBadge: { borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5 },
+  pulseBadgeText: { fontSize: 11.5, fontWeight: '800' },
+  pulseDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginVertical: 12,
+  },
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 32 },
   summary: { backgroundColor: colors.brand, borderRadius: 16, padding: 18, marginBottom: 4 },

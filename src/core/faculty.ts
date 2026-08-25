@@ -124,3 +124,29 @@ export function flattenFaculty(
 
   return out;
 }
+
+/**
+ * Well-structured, friendly plain-text card for a faculty member — used for
+ * both clipboard copy and the system share sheet, from list rows as well as
+ * the detail modal. Kept pure for unit-testing.
+ *
+ *   Name — Status
+ *   Computer Science (CS)
+ *   FAST-NU Islamabad
+ *   Email: name@nu.edu.pk
+ *   Office: R-101
+ *   Profile: https://…
+ */
+export function formatFacultyShareText(
+  m: FacultyMember & { deptKey: DeptFileKey }
+): string {
+  const lines: string[] = [];
+  lines.push(`${m.name}${m.status ? ` — ${m.status}` : ''}`);
+  const dept = DEPT_LABELS[m.deptKey];
+  lines.push(dept ? `${dept} (${m.deptKey})` : m.deptKey);
+  lines.push('FAST-NU Islamabad');
+  if (m.email) lines.push(`Email: ${m.email}`);
+  if (m.office_room) lines.push(`Office: ${m.office_room}`);
+  if (m.profile_url) lines.push(`Profile: ${m.profile_url}`);
+  return lines.join('\n');
+}

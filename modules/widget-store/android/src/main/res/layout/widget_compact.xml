@@ -32,12 +32,12 @@
 
   <ImageButton
     android:id="@+id/widget_refresh"
-    android:layout_width="22dp"
-    android:layout_height="22dp"
+    android:layout_width="34dp"
+    android:layout_height="34dp"
     android:layout_gravity="center_vertical"
     android:contentDescription="Refresh widget now"
     android:background="@android:color/transparent"
-    android:scaleType="centerInside"
+    android:scaleType="fitCenter"
     android:src="@drawable/ic_widget_refresh" />
 
   </LinearLayout>
@@ -59,6 +59,28 @@
     android:textStyle="bold"
     android:textColor="#FFFFFF"
     android:maxLines="2"
+    android:ellipsize="end" />
+
+  <TextView
+    android:id="@+id/widget_meta"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="3dp"
+    android:text="Sec B · C-301"
+    android:textSize="11sp"
+    android:textColor="#B9C6D8"
+    android:maxLines="1"
+    android:ellipsize="end" />
+
+  <TextView
+    android:id="@+id/widget_sub"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="1dp"
+    android:text="10:00 AM"
+    android:textSize="10sp"
+    android:textColor="#93A5BF"
+    android:maxLines="1"
     android:ellipsize="end" />
 
   <TextView

@@ -85,6 +85,7 @@ export function buildSnapshot(
       totalMin: Math.max(1, end - start),
       extra,
       sub: `ends ${formatSlotEnd(primary.time)}`,
+      subTime: `ends ${formatSlotEnd(primary.time)}`,
       updatedAt,
     };
   }
@@ -108,6 +109,7 @@ export function buildSnapshot(
     sub: occLabel
       ? `${occLabel} · ${formatSlotStart(primary.time)}`
       : `starts ${formatSlotStart(primary.time)}`,
+    subTime: `starts ${formatSlotStart(primary.time)}`,
     updatedAt,
   };
 }

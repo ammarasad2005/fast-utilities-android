@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- expo-file-system downloads to cacheDirectory -->
+  <cache-path name="updates_cache" path="." />
+  <files-path name="updates_files" path="." />
+</paths>

@@ -14,6 +14,8 @@ export type NextClassWidgetSnapshot = {
   extra?: number;
   /** Secondary line: date label for next, end time for ongoing. */
   sub?: string;
+  /** Time-only variant of `sub` for the compact widget (day/date dropped). */
+  subTime?: string;
   /** When the snapshot was computed (ms). */
   updatedAt: number;
 };

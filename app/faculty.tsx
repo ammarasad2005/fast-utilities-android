@@ -7,6 +7,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -20,12 +21,25 @@ import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { useCachedData } from '@/hooks/useCachedData';
 import { fetchFaculty } from '@/api/endpoints';
 import { CACHE_TTL } from '@/api/config';
-import { flattenFaculty, searchFaculty, DEPT_LABELS, DEPT_ORDER, type DeptFileKey } from '@/core/faculty';
+import { flattenFaculty, searchFaculty, formatFacultyShareText, DEPT_LABELS, DEPT_ORDER, type DeptFileKey } from '@/core/faculty';
 import type { FacultyMember, RawFacultyDepartment } from '@/core/types';
 import { Chip, ErrorState, LoadingState, OfflineNotice } from '@/components/ui';
 import { ScreenHeader } from '@/components/ScreenHeader';
 
 type FlatMember = FacultyMember & { deptKey: DeptFileKey };
+
+async function copyMember(m: FlatMember) {
+  await Clipboard.setStringAsync(formatFacultyShareText(m));
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+}
+
+async function shareMember(m: FlatMember) {
+  try {
+    await Share.share({ message: formatFacultyShareText(m) });
+  } catch {
+    // user cancelled the sheet — nothing to do
+  }
+}
 
 export default function FacultyScreen() {
   const styles = useStyles(makeStyles);
@@ -123,10 +137,30 @@ function FacultyRow({ member, onPress }: { member: FlatMember; onPress: () => vo
           {member.status}
         </Text>
       </View>
-      <View style={[styles.deptBadge, { backgroundColor: deptAccentBg[member.deptKey] ?? colors.infoBg }]}>
-        <Text style={[styles.deptBadgeText, { color: deptAccent[member.deptKey] ?? colors.brand }]}>
-          {member.deptKey}
-        </Text>
+      <View style={{ alignItems: 'flex-end', gap: 6 }}>
+        <View style={[styles.deptBadge, { backgroundColor: deptAccentBg[member.deptKey] ?? colors.infoBg }]}>
+          <Text style={[styles.deptBadgeText, { color: deptAccent[member.deptKey] ?? colors.brand }]}>
+            {member.deptKey}
+          </Text>
+        </View>
+        <View style={styles.rowIcons}>
+          <Pressable
+            onPress={() => copyMember(member)}
+            hitSlop={8}
+            android_ripple={{ color: colors.border, borderless: true, radius: 18 }}
+            accessibilityLabel={`Copy ${member.name}'s details`}
+          >
+            <Ionicons name="copy-outline" size={16} color={colors.textTertiary} />
+          </Pressable>
+          <Pressable
+            onPress={() => shareMember(member)}
+            hitSlop={8}
+            android_ripple={{ color: colors.border, borderless: true, radius: 18 }}
+            accessibilityLabel={`Share ${member.name}'s contact`}
+          >
+            <Ionicons name="share-social-outline" size={17} color={colors.textTertiary} />
+          </Pressable>
+        </View>
       </View>
     </Pressable>
   );
@@ -162,6 +196,16 @@ function FacultyModal({ member, onClose }: { member: FlatMember | null; onClose:
                 }}
               />
             ) : null}
+            <ActionRow
+              icon="copy-outline"
+              label="Copy details"
+              onPress={() => copyMember(member)}
+            />
+            <ActionRow
+              icon="share-social-outline"
+              label="Share contact"
+              onPress={() => shareMember(member)}
+            />
             {member.office_room ? (
               <ActionRow icon="business-outline" label={`Office: ${member.office_room}`} />
             ) : null}
@@ -233,6 +277,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   name: { fontSize: 15, fontWeight: '700', color: colors.text },
   status: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
   deptBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  rowIcons: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingRight: 2 },
   deptBadgeText: { fontSize: 11, fontWeight: '700' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
   modalCard: { backgroundColor: colors.raised, borderRadius: 20, padding: 20 },
