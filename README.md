@@ -149,7 +149,7 @@ The app is distributed as a direct-download APK (and via APK hosts such as APKPu
 manages its own updates:
 
 1. Every CI build also **publishes a GitHub Release** (`v<version>`) with the APK attached and
-   commits an updated [`version.json`](version.json) to the repo (`{versionCode, apkUrl, notes}").
+   commits an updated [`version.json`](version.json) to the repo (`{versionCode, apkUrl, notes}`).
 2. On the home screen the app checks that manifest (throttled); when a **newer versionCode** is
    published, a banner appears with the changelog note.
 3. Tapping **Download & Install** downloads the release APK inside the app (progress shown) and
