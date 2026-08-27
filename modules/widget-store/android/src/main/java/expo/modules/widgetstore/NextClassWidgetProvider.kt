@@ -38,7 +38,14 @@ abstract class BaseNextClassWidgetProvider : AppWidgetProvider() {
   abstract val defaultLayout: Int
 
   override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-    for (id in appWidgetIds) WidgetRenderer.render(context, appWidgetManager, id, defaultLayout)
+    // periodic tick comes with no options — keep the bucket from the last
+    // render (resize persist) instead of snapping back to the default layout
+    val prefs = context.getSharedPreferences("fastutilities_widget", Context.MODE_PRIVATE)
+    for (id in appWidgetIds) {
+      val persisted = prefs.getInt("bucket_$id", 0)
+      val layout = if (persisted != 0) persisted else defaultLayout
+      WidgetRenderer.render(context, appWidgetManager, id, layout)
+    }
   }
 
   /**
@@ -53,7 +60,16 @@ abstract class BaseNextClassWidgetProvider : AppWidgetProvider() {
   ) {
     val w = newOptions?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0) ?: 0
     val h = newOptions?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0) ?: 0
-    WidgetRenderer.render(context, appWidgetManager, appWidgetId, WidgetRenderer.layoutFor(w, h, defaultLayout))
+    // empty options (cold host) → keep the bucket persisted on the last render
+    val persisted = context
+      .getSharedPreferences("fastutilities_widget", Context.MODE_PRIVATE)
+      .getInt("bucket_$appWidgetId", 0)
+    WidgetRenderer.render(
+      context,
+      appWidgetManager,
+      appWidgetId,
+      WidgetRenderer.layoutFor(w, h, if (persisted != 0) persisted else defaultLayout)
+    )
   }
 
   companion object {

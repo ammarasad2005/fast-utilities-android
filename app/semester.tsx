@@ -10,21 +10,12 @@ import {
   daysUntil,
   getSemesterStartDate,
   getSemesterEndDate,
+  getSemesterWeekNumber,
   getUpcomingKeyDates,
-  computeCurrentPhase,
-  type PulseKind,
 } from '@/core/semester';
 import type { KeyDate, SemesterCalendar } from '@/core/types';
 import { ErrorState, LoadingState, OfflineNotice, SectionHeader } from '@/components/ui';
 import { ScreenHeader } from '@/components/ScreenHeader';
-
-const PULSE_TINT: Record<PulseKind, { color: string; bg: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  holiday: { color: '#B45309', bg: '#FFFBEB', icon: 'partly-sunny' },
-  exam: { color: '#B45309', bg: '#FFFBEB', icon: 'ribbon' },
-  classes: { color: '#1D4ED8', bg: '#EFF6FF', icon: 'school' },
-  'pre-semester': { color: '#0F766E', bg: '#F0FDFA', icon: 'hourglass' },
-  'post-semester': { color: '#475569', bg: '#F8FAFC', icon: 'checkmark-done' },
-};
 
 const TYPE_STYLE: Record<string, { color: string; bg: string; icon: keyof typeof Ionicons.glyphMap }> = {
   exam: { color: '#B45309', bg: '#FFFBEB', icon: 'ribbon' },
@@ -39,7 +30,7 @@ export default function SemesterScreen() {
     useCachedData<SemesterCalendar>('data:semester', fetchSemesterCalendar, CACHE_TTL.semester);
 
   const upcoming = useMemo(() => (calendar ? getUpcomingKeyDates(calendar, 5) : []), [calendar]);
-  const pulse = useMemo(() => (calendar ? computeCurrentPhase(calendar) : null), [calendar]);
+  const weekNow = useMemo(() => (calendar ? getSemesterWeekNumber(calendar) : null), [calendar]);
 
   if (isLoading) return <LoadingState label="Loading semester calendar…" />;
   if (!calendar || error) return <ErrorState message={error ?? undefined} onRetry={refresh} />;
@@ -58,49 +49,6 @@ export default function SemesterScreen() {
         {isFromCache ? (
           <View style={{ marginBottom: 12 }}>
             <OfflineNotice cached />
-          </View>
-        ) : null}
-
-        {/* Semester pulse — current stage + what comes next (holidays included) */}
-        {pulse ? (
-          <View style={styles.pulseCard}>
-            <View style={styles.pulseRow}>
-              <View style={[styles.pulseIcon, { backgroundColor: PULSE_TINT[pulse.current.kind].bg }]}>
-                <Ionicons name={PULSE_TINT[pulse.current.kind].icon} size={18} color={PULSE_TINT[pulse.current.kind].color} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.pulseEyebrow}>Now</Text>
-                <Text style={styles.pulseLabel}>{pulse.current.label}</Text>
-                <Text style={styles.pulseSub}>{pulse.current.dates}</Text>
-              </View>
-              {pulse.current.context ? (
-                <View style={[styles.pulseBadge, { backgroundColor: PULSE_TINT[pulse.current.kind].bg }]}>
-                  <Text style={[styles.pulseBadgeText, { color: PULSE_TINT[pulse.current.kind].color }]}>
-                    {pulse.current.context}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            {pulse.next ? (
-              <>
-                <View style={styles.pulseDivider} />
-                <View style={styles.pulseRow}>
-                  <View style={[styles.pulseIcon, { backgroundColor: PULSE_TINT[pulse.next.kind].bg }]}>
-                    <Ionicons name={PULSE_TINT[pulse.next.kind].icon} size={18} color={PULSE_TINT[pulse.next.kind].color} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.pulseEyebrow}>Up next</Text>
-                    <Text style={styles.pulseLabel}>{pulse.next.label}</Text>
-                    <Text style={styles.pulseSub}>{pulse.next.dates}</Text>
-                  </View>
-                  <View style={[styles.pulseBadge, { backgroundColor: colors.brand }]}>
-                    <Text style={[styles.pulseBadgeText, { color: colors.onBrand }]}>
-                      {pulse.next.daysUntil === 0 ? 'Today' : `${pulse.next.daysUntil}d`}
-                    </Text>
-                  </View>
-                </View>
-              </>
-            ) : null}
           </View>
         ) : null}
 
@@ -159,20 +107,58 @@ export default function SemesterScreen() {
           ))
         )}
 
-        {/* Full timeline */}
+        {/* Full timeline with live tracker */}
         <SectionHeader title="Full calendar" />
-        {[...calendar.keyDates]
-          .sort((a, b) => a.date.localeCompare(b.date))
-          .map((kd) => (
-            <View key={kd.label} style={styles.timelineItem}>
-              <View style={styles.timelineDot} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.timelineDate}>{formatKeyDateRange(kd)}</Text>
-                <Text style={styles.timelineLabel}>{kd.label}</Text>
-              </View>
-              <TypeBadge type={kd.type} />
+        {(() => {
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          const tISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+            now.getDate()
+          ).padStart(2, '0')}`;
+          const sorted = [...calendar.keyDates].sort((a, b) => a.date.localeCompare(b.date));
+          const spansToday = (kd: KeyDate) => {
+            const end = kd.endDate ?? kd.date;
+            return kd.date <= tISO && tISO <= end;
+          };
+          const nodes: React.ReactNode[] = [];
+          let marked = false;
+          const mark = (
+            <View key="__live" style={styles.liveRow}>
+              <View style={[styles.liveLine, { backgroundColor: colors.brand }]} />
+              <Text style={[styles.liveText, { color: colors.brand }]}>
+                Now{weekNow ? ` · Week ${weekNow}` : ''}
+              </Text>
+              <View style={[styles.liveLine, { backgroundColor: colors.brand }]} />
             </View>
-          ))}
+          );
+          for (const kd of sorted) {
+            const live = spansToday(kd);
+            if (!marked && kd.date > tISO && !live) {
+              nodes.push(mark);
+              marked = true;
+            }
+            nodes.push(
+              <View key={kd.label} style={[styles.timelineItem, live && styles.timelineItemNow]}>
+                <View style={[styles.timelineDot, live && { backgroundColor: colors.brand, transform: [{ scale: 1.25 }] }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.timelineDate}>{formatKeyDateRange(kd)}</Text>
+                  <Text style={styles.timelineLabel}>{kd.label}</Text>
+                </View>
+                {live ? (
+                  <View style={[styles.nowBadge, { backgroundColor: colors.brand }]}>
+                    <Text style={styles.nowBadgeText}>NOW</Text>
+                  </View>
+                ) : null}
+                <TypeBadge type={kd.type} />
+              </View>
+            );
+            if (!marked && live) {
+              marked = true; // the live line sits at the current event itself
+            }
+          }
+          if (!marked) nodes.push(mark);
+          return nodes;
+        })()}
       </ScrollView>
     </View>
   );
@@ -215,38 +201,6 @@ function TypeBadge({ type }: { type: string }) {
 }
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  pulseCard: {
-    backgroundColor: colors.raised,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    marginBottom: 16,
-  },
-  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  pulseIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pulseEyebrow: {
-    fontSize: 10.5,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    color: colors.textTertiary,
-    textTransform: 'uppercase',
-  },
-  pulseLabel: { fontSize: 15, fontWeight: '800', color: colors.text, marginTop: 1 },
-  pulseSub: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
-  pulseBadge: { borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5 },
-  pulseBadgeText: { fontSize: 11.5, fontWeight: '800' },
-  pulseDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginVertical: 12,
-  },
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 32 },
   summary: { backgroundColor: colors.brand, borderRadius: 16, padding: 18, marginBottom: 4 },
@@ -294,6 +248,16 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   typeBadgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
   timelineItem: { flexDirection: 'row', gap: 12, paddingVertical: 10, alignItems: 'flex-start' },
   timelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.brand, marginTop: 6 },
+  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 10 },
+  liveLine: { flex: 1, height: StyleSheet.hairlineWidth },
+  liveText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
+  timelineItemNow: {
+    backgroundColor: colors.subtle,
+    borderColor: colors.brand,
+    borderWidth: 1,
+  },
+  nowBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, marginRight: 8 },
+  nowBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
   timelineDate: { fontSize: 12, fontWeight: '700', color: colors.brand },
   timelineLabel: { fontSize: 14, color: colors.text, marginTop: 2 },
 });

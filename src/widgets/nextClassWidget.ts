@@ -35,6 +35,7 @@ import {
   type RawTimetableJSON,
   type SemesterCalendar,
   type TimetableEntry,
+  type TimetableSheetMeta,
 } from '@/core/types';
 import { resolveWeekPlan, type WeekPlan } from '@/core/weekPlan';
 import { loadBundles } from '@/prefs/bundles';
@@ -65,7 +66,8 @@ export function buildSnapshot(
   status: ClassStatus | null,
   plan: WeekPlan | null,
   needsTag: boolean,
-  now: Date = new Date()
+  now: Date = new Date(),
+  chainSource?: WidgetChainSource
 ): NextClassWidgetSnapshot {
   const updatedAt = now.getTime();
   if (needsTag) return { state: 'needsTag', updatedAt };
@@ -77,7 +79,7 @@ export function buildSnapshot(
   const { start, end } = parseTimeRange(primary.time);
 
   if (status.type === 'ongoing') {
-    return {
+    const out: NextClassWidgetSnapshot = {
       state: 'ongoing',
       course: primary.courseName,
       meta: metaLine(primary),
@@ -88,6 +90,8 @@ export function buildSnapshot(
       subTime: `ends ${formatSlotEnd(primary.time)}`,
       updatedAt,
     };
+    if (chainSource) out.followup = buildFollowupChain(chainSource, snapshotEndMs(out));
+    return out;
   }
 
   // occurrence-date label when the next class isn't on the effective today
@@ -100,11 +104,12 @@ export function buildSnapshot(
         })()
       : null;
 
-  return {
+  const out: NextClassWidgetSnapshot = {
     state: 'next',
     course: primary.courseName,
     meta: metaLine(primary),
     targetEpochMs: epochFor(primary.dateISO, start),
+    totalMin: Math.max(1, end - start),
     extra,
     sub: occLabel
       ? `${occLabel} · ${formatSlotStart(primary.time)}`
@@ -112,6 +117,64 @@ export function buildSnapshot(
     subTime: `starts ${formatSlotStart(primary.time)}`,
     updatedAt,
   };
+  if (chainSource) out.followup = buildFollowupChain(chainSource, snapshotEndMs(out));
+  return out;
+}
+
+/** Inputs needed to recompute the class status at arbitrary future times. */
+export interface WidgetChainSource {
+  entries: TimetableEntry[];
+  metaDays: TimetableSheetMeta[] | undefined | null;
+  semesterStartISO: string | null;
+}
+
+/**
+ * Snapshots for the classes that come AFTER the primary one (up to 3),
+ * computed by probing the live pipeline at synthetic future times. The
+ * Android renderer walks this queue JS-free: when the primary class ends it
+ * adopts the first follow-up, and so on — so the widget always shows the
+ * real next class instead of a frozen "0m left" / "starting now".
+ */
+export function buildFollowupChain(
+  source: WidgetChainSource | null | undefined,
+  afterMs: number,
+  chain: NextClassWidgetSnapshot[] = []
+): NextClassWidgetSnapshot[] | undefined {
+  if (!source || !source.entries.length || chain.length >= 3) {
+    return chain.length ? chain : undefined;
+  }
+  // probe just past the current class end
+  let probe = new Date(afterMs + 61_000);
+  let dayHops = 0;
+  while (chain.length < 3 && dayHops < 6) {
+    const plan = resolveWeekPlan(source.metaDays, {
+      semesterStartISO: source.semesterStartISO,
+      now: probe,
+    });
+    const status = computeClassStatus(source.entries, plan, probe);
+    const snap = buildSnapshot(status, plan, false, probe);
+    if (snap.state === 'next' || snap.state === 'ongoing') {
+      chain.push(snap);
+      // next probe: just past THIS class's end
+      const total = snap.totalMin ?? 0;
+      const start =
+        snap.state === 'next' ? snap.targetEpochMs ?? probe.getTime()
+          : (snap.targetEpochMs ?? probe.getTime()) - total * 60_000;
+      probe = new Date(start + total * 60_000 + 61_000);
+    } else {
+      // nothing left this effective day — hop to the next day, 08:00
+      dayHops += 1;
+      probe = new Date(probe.getFullYear(), probe.getMonth(), probe.getDate() + 1, 8, 0, 0);
+    }
+  }
+  return chain.length ? chain : undefined;
+}
+
+/** Primary class end epoch for a built (ongoing|next) snapshot. */
+export function snapshotEndMs(snap: NextClassWidgetSnapshot): number {
+  const total = snap.totalMin ?? 0;
+  if (snap.state === 'next') return (snap.targetEpochMs ?? 0) + total * 60_000;
+  return snap.targetEpochMs ?? 0;
 }
 
 /** Avoid re-poking the widget manager when the rendered content is unchanged. */
@@ -192,7 +255,13 @@ export async function syncNextClassWidgetFromCache(now: Date = new Date()): Prom
       semesterStartISO: getSemesterStartDate(calendarEntry?.data ?? null),
     });
     const status = computeClassStatus(myEntries, plan, now);
-    publishNextClassWidget(buildSnapshot(status, plan, false, now));
+    publishNextClassWidget(
+      buildSnapshot(status, plan, false, now, {
+        entries: myEntries,
+        metaDays: raw[TIMETABLE_META_KEY]?.days,
+        semesterStartISO: getSemesterStartDate(calendarEntry?.data ?? null),
+      })
+    );
   } catch {
     // best-effort
   }

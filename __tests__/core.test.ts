@@ -12,7 +12,7 @@ import { flattenFaculty, searchFaculty, getFacultyRank, formatFacultyShareText }
 import { getCalendarCells, parseEventDate } from '@/core/events';
 import { resolveWeekPlan, attachEntries, getEffectiveTodayDate, isTomorrowPreview } from '@/core/weekPlan';
 import { computeClassStatus } from '@/core/liveClass';
-import { buildSnapshot, epochFor } from '@/widgets/nextClassWidget';
+import { buildSnapshot, epochFor, buildFollowupChain, snapshotEndMs } from '@/widgets/nextClassWidget';
 import { parseRemoteVersion, isUpdateAvailable, localVersionCode } from '@/updates/checkUpdate';
 import { getSemesterProgress, getSemesterMilestones, getSemesterStartDate, getSemesterEndDate, getFinalExamsEndDate, getSemesterWeekNumber, computeCurrentPhase } from '@/core/semester';
 import type { RawTimetableJSON, ExamEntry, RawFacultyDepartment, TimetableEntry, SemesterCalendar } from '@/core/types';
@@ -736,7 +736,8 @@ describe('nextClassWidget: buildSnapshot', () => {
 
     expect(snap.sub).toBe('starts 08:30 AM');
     expect(snap.subTime).toBe('starts 08:30 AM');
-    expect(snap.totalMin).toBeUndefined();
+    // next-state also carries totalMin so the widget can roll states JS-free
+    expect(snap.totalMin).toBe(80);
   });
 
   it('next on a different day prefixes weekday and date', () => {
@@ -895,3 +896,71 @@ describe('formatFacultyShareText', () => {
     expect(t).not.toContain('Office');
   });
 });
+
+describe('buildSnapshot followup chain', () => {
+  const planWed09 = planFor('2026-08-17', at('2026-08-19T09:00:00'));
+  const chainSourceFor = (entries: TimetableEntry[]) => ({
+    entries,
+    metaDays: metaW as any,
+    semesterStartISO: '2026-08-17',
+  });
+
+  it('ongoing chains to the rest of the day and tomorrow (epoch-sorted)', () => {
+    const entries = [
+      entry('Wednesday', '08:30-09:50', { courseName: 'Linear Algebra' }),
+      entry('Wednesday', '11:00-12:20', { courseName: 'Calculus' }),
+      entry('Thursday', '08:30-09:50', { courseName: 'Physics' }),
+    ];
+    const now = at('2026-08-19T09:00:00');
+    const status = computeClassStatus(entries, planWed09, now);
+    expect(status?.type).toBe('ongoing');
+    const snap = buildSnapshot(status, planWed09, false, now, chainSourceFor(entries));
+    expect(snap.state).toBe('ongoing');
+    expect(snapshotEndMs(snap)).toBe(new Date(2026, 7, 19, 9, 50).getTime());
+    const fu = snap.followup!;
+    expect(fu.length).toBeGreaterThanOrEqual(2);
+    expect(fu[0].state).toBe('next');
+    expect(fu[0].course).toBe('Calculus');
+    expect(fu[0].sub).toBe('starts 11:00 AM');
+    expect(fu[0].totalMin).toBe(80);
+    expect(fu[1].course).toBe('Physics');
+    expect(fu[1].sub).toContain('Thu'); // day-hopped next day
+    // every follow-up is strictly later in time than its predecessor
+    for (let i = 1; i < fu.length; i++) {
+      expect(fu[i].targetEpochMs!).toBeGreaterThan(fu[i - 1].targetEpochMs!);
+      expect(fu[i].followup).toBeUndefined(); // linear chain, no nesting
+    }
+  });
+
+  it('hops weekends to find Monday', () => {
+    const entries = [entry('Monday', '08:30-09:50', { courseName: 'Algo' })];
+    const afterFri = at('2026-08-22T12:00:00'); // Saturday noon
+    const chain = buildFollowupChain(chainSourceFor(entries), afterFri.getTime())!;
+    // first hop: Sun (none), then Mon — Algo 08:30 next week
+    expect(chain[0].course).toBe('Algo');
+    expect(chain[0].sub).toContain('Mon');
+    // the chain may legally roll into the following Mondays (capped at 3)
+    expect(chain.length).toBeLessThanOrEqual(3);
+    expect(chain.every((c) => c.course === 'Algo')).toBe(true);
+    const wk = 7 * 24 * 60 * 60_000;
+    expect(chain[1].targetEpochMs! - chain[0].targetEpochMs!).toBe(wk);
+  });
+
+  it('cancelled classes never appear in the chain', () => {
+    const entries = [
+      entry('Wednesday', '08:30-09:50', { courseName: 'A', cancelled: true }),
+      entry('Wednesday', '11:00-12:20', { courseName: 'B' }),
+    ];
+    const chain = buildFollowupChain(chainSourceFor(entries), at('2026-08-19T08:00:00').getTime())!;
+    // every chain item is B (never the cancelled A), spaced weekly
+    expect(chain.every((c) => c.course === 'B')).toBe(true);
+    expect(chain[0].sub).toBe('starts 11:00 AM');
+    expect(chain[1].targetEpochMs! - chain[0].targetEpochMs!).toBe(7 * 24 * 60 * 60_000);
+  });
+
+  it('empty source produces no chain', () => {
+    expect(buildFollowupChain({ entries: [], metaDays: metaW as any, semesterStartISO: null }, Date.now())).toBeUndefined();
+    expect(buildFollowupChain(null, Date.now())).toBeUndefined();
+  });
+});
+

@@ -25,8 +25,9 @@ export default function AboutScreen() {
           </Text>
         </Card>
 
-        <Card>
-          <Text style={styles.devEyebrow}>Developer</Text>
+        <View style={{ marginTop: 16 }}>
+          <Card>
+            <Text style={styles.devEyebrow}>Developer</Text>
           <Text style={styles.devName}>Muhammad Ammar Asad</Text>
           <Text style={styles.body}>BS Computer Science · FAST-NU Islamabad</Text>
           <View style={styles.devIcons}>
@@ -47,7 +48,8 @@ export default function AboutScreen() {
               <Ionicons name="logo-github" size={22} color={colors.text} />
             </Pressable>
           </View>
-        </Card>
+          </Card>
+        </View>
 
         <View style={{ marginTop: 16, gap: 10 }}>
           <LinkRow
@@ -59,16 +61,12 @@ export default function AboutScreen() {
           <LinkRow
             icon="logo-github"
             title="App source"
-            subtitle="github.com/ammarasad2005/fast-utilities-android-v1"
-            onPress={() => Linking.openURL('https://github.com/ammarasad2005/fast-utilities-android-v1')}
+            subtitle="github.com/ammarasad2005/fast-utilities-android"
+            onPress={() => Linking.openURL('https://github.com/ammarasad2005/fast-utilities-android')}
           />
         </View>
 
-        <Text style={styles.note}>
-          Data comes from the campus data service on Vercel. The app caches recently-viewed
-          screens so everything keeps working offline; pull to refresh for the latest. When a
-          new build is published, the app will offer to update itself in place.
-        </Text>
+
       </ScrollView>
     </View>
   );

@@ -25,6 +25,7 @@ import {
   getSemesterMilestones,
   getSemesterWeekNumber,
   getSemesterStartDate,
+  computeCurrentPhase,
 } from '@/core/semester';
 import {
   computeDisplayedEntries,
@@ -37,6 +38,7 @@ import { computeClassStatus } from '@/core/liveClass';
 import { resolveWeekPlan } from '@/core/weekPlan';
 import { TIMETABLE_META_KEY, type RawTimetableJSON, type SemesterCalendar, type TimetableEntry } from '@/core/types';
 import { NextClassCard } from '@/components/NextClassCard';
+import { SemesterPulseRows } from '@/components/SemesterPulse';
 import { getSavedSchedule, type SavedSchedule } from '@/prefs/savedSchedule';
 import { loadBundles, type CustomBundle } from '@/prefs/bundles';
 import { buildSnapshot, publishNextClassWidget } from '@/widgets/nextClassWidget';
@@ -87,6 +89,7 @@ export default function HomeScreen() {
   const styles = useStyles(makeStyles);
   const { colors, theme, themes, setThemeId } = useTheme();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pulseOpen, setPulseOpen] = useState(false);
   const router = useRouter();
   const { data: calendar } = useCachedData<SemesterCalendar>(
     'data:semester',
@@ -105,6 +108,9 @@ export default function HomeScreen() {
     const pct = Math.max(0, Math.min(100, progress));
     return { pct, week, milestones, color: interpolateColor(pct) };
   }, [calendar]);
+
+  // day-granular; recomputed when the calendar loads/changes (default now is fine)
+  const pulse = useMemo(() => (calendar ? computeCurrentPhase(calendar) : null), [calendar]);
 
   // ── Live class tracking (port of the web's DesktopTicker) ──────────────────
   const [now, setNow] = useState(() => new Date());
@@ -217,8 +223,14 @@ export default function HomeScreen() {
   // transient "none" state on the widget.
   useEffect(() => {
     if (classLoading) return;
-    publishNextClassWidget(buildSnapshot(classStatus, livePlan, !saved, now));
-  }, [classStatus, livePlan, saved, classLoading, now]);
+    publishNextClassWidget(
+      buildSnapshot(classStatus, livePlan, !saved, now, {
+        entries: myEntries,
+        metaDays: liveRaw?.[TIMETABLE_META_KEY]?.days,
+        semesterStartISO: getSemesterStartDate(calendar ?? null),
+      })
+    );
+  }, [classStatus, livePlan, saved, classLoading, now, myEntries, liveRaw, calendar]);
 
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
@@ -278,8 +290,11 @@ export default function HomeScreen() {
             {timeline ? (
               <Pressable
                 style={styles.timelineCardCompact}
-                onPress={() => router.push('/semester' as any)}
-                accessibilityLabel="Semester timeline — open semester schedule"
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  setPulseOpen(true);
+                }}
+                accessibilityLabel="Semester timeline — show current stage and what is next"
               >
             <View style={styles.timelineMeta}>
               <Text style={styles.timelineWeek}>
@@ -299,7 +314,7 @@ export default function HomeScreen() {
                   key={m.shortLabel}
                   style={[styles.timelineMarker, { left: `${m.progressPercent}%` }]}
                 >
-                  <View style={[styles.timelineDot, { backgroundColor: timeline.color }]} />
+                  <View style={[styles.timelineTick, { backgroundColor: timeline.color }]} />
                   <Text style={styles.timelineMarkerLabel}>{m.shortLabel}</Text>
                 </View>
               ))}
@@ -348,6 +363,36 @@ export default function HomeScreen() {
       </ScrollView>
 
       {/* Theme picker */}
+      <Modal visible={pulseOpen} transparent animationType="fade" onRequestClose={() => setPulseOpen(false)}>
+        <Pressable style={styles.pulseBackdrop} onPress={() => setPulseOpen(false)}>
+          <Pressable style={styles.pulseCard} onPress={() => {}}>
+            <View style={styles.pulseHeader}>
+              <Text style={styles.pulseTitle}>Semester pulse</Text>
+              <Pressable onPress={() => setPulseOpen(false)} hitSlop={10} accessibilityLabel="Close">
+                <Ionicons name="close" size={17} color={colors.textTertiary} />
+              </Pressable>
+            </View>
+            {pulse ? (
+              <SemesterPulseRows pulse={pulse} />
+            ) : (
+              <Text style={styles.pulseEmpty}>Semester schedule not loaded yet.</Text>
+            )}
+            <Pressable
+              style={styles.pulseLink}
+              onPress={() => {
+                setPulseOpen(false);
+                router.push('/semester');
+              }}
+              android_ripple={{ color: colors.border }}
+              accessibilityLabel="Open the full semester schedule"
+            >
+              <Text style={styles.pulseLinkText}>Full schedule</Text>
+              <Ionicons name="arrow-forward" size={14} color={colors.brand} />
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
         <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)}>
           <Pressable style={styles.pickerSheet} onPress={() => {}}>
@@ -431,9 +476,36 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: 14,
   },
   timelineFill: { height: 6, borderRadius: 3 },
-  timelineMarker: { position: 'absolute', top: -3, alignItems: 'center', marginLeft: -4 },
-  timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: colors.raised },
-  timelineMarkerLabel: { fontSize: 9, fontWeight: '800', color: colors.textSecondary, marginTop: 3 },
+  timelineMarker: { position: 'absolute', top: -1, alignItems: 'center', marginLeft: -1 },
+  timelineTick: { width: 2, height: 8, borderRadius: 1 },
+  timelineMarkerLabel: { fontSize: 8.5, fontWeight: '700', color: colors.textTertiary, marginTop: 3, marginLeft: -7 },
+  pulseBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(11,22,38,0.45)',
+    justifyContent: 'center',
+    padding: 28,
+  },
+  pulseCard: {
+    backgroundColor: colors.raised,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  pulseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  pulseTitle: { fontSize: 14, fontWeight: '800', color: colors.text, letterSpacing: 0.3 },
+  pulseEmpty: { fontSize: 13, color: colors.textTertiary },
+  pulseLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: colors.subtle,
+  },
+  pulseLinkText: { fontSize: 12.5, fontWeight: '800', color: colors.brand },
   sectionLabel: {
     fontSize: 12,
     fontWeight: '700',

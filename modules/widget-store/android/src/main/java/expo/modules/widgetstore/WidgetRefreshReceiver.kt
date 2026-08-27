@@ -42,33 +42,42 @@ class WidgetRefreshReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action != ACTION) return
 
-    // Stage 1: instant repaint with exact countdown math
+    // Stage 1: instant repaint (rolls the class chain from absolute epochs)
     WidgetRenderer.refresh(context)
 
     // Stage 2: authoritative re-sync through the JS headless task
-    try {
-      val data = Data.Builder()
-        .putString("appScopeKey", context.packageName)
-        .build()
-      val constraints = Constraints.Builder()
-        .setRequiredNetworkType(NetworkType.CONNECTED)
-        .build()
-      val request = OneTimeWorkRequestBuilder<BackgroundTaskWork>()
-        .setInputData(data)
-        .setConstraints(constraints)
-        .build()
-      WorkManager.getInstance(context).enqueueUniqueWork(
-        UNIQUE_WORK,
-        ExistingWorkPolicy.REPLACE,
-        request
-      )
-    } catch (e: Exception) {
-      // Stage 1 already refreshed the widget; a failed enqueue is non-fatal.
-    }
+    enqueueSync(context)
   }
 
   companion object {
     const val ACTION = "expo.modules.widgetstore.action.MANUAL_REFRESH"
     private const val UNIQUE_WORK = "fast-utilities-widget-manual-sync"
+
+    /**
+     * Enqueue the one-off JS sync (same work name as a manual refresh, so
+     * repeated kicks dedupe into a single pending job). Safe to call from
+     * any code path; failures are swallowed — the paint already happened.
+     */
+    fun enqueueSync(context: Context) {
+      try {
+        val data = Data.Builder()
+          .putString("appScopeKey", context.packageName)
+          .build()
+        val constraints = Constraints.Builder()
+          .setRequiredNetworkType(NetworkType.CONNECTED)
+          .build()
+        val request = OneTimeWorkRequestBuilder<BackgroundTaskWork>()
+          .setInputData(data)
+          .setConstraints(constraints)
+          .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+          UNIQUE_WORK,
+          ExistingWorkPolicy.REPLACE,
+          request
+        )
+      } catch (e: Exception) {
+        // non-fatal: rendering never depends on the enqueue succeeding
+      }
+    }
   }
 }

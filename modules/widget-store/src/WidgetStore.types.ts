@@ -16,6 +16,11 @@ export type NextClassWidgetSnapshot = {
   sub?: string;
   /** Time-only variant of `sub` for the compact widget (day/date dropped). */
   subTime?: string;
+  /**
+   * Snapshots of the next ~3 classes after this one. The native renderer walks
+   * this queue JS-free so a class ending never leaves a stale "0m left".
+   */
+  followup?: NextClassWidgetSnapshot[];
   /** When the snapshot was computed (ms). */
   updatedAt: number;
 };

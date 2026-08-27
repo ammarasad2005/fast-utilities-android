@@ -15,7 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
 const VERSION_JSON_URL =
-  'https://raw.githubusercontent.com/ammarasad2005/fast-utilities-android-v1/main/version.json';
+  'https://raw.githubusercontent.com/ammarasad2005/fast-utilities-android/main/version.json';
 const CHECK_THROTTLE_MS = 6 * 60 * 60 * 1000; // 6 hours
 const LAST_CHECK_KEY = 'updater:last_check';
 const TIMEOUT_MS = 8000;
