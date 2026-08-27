@@ -1,6 +1,6 @@
 {
   "versionCode": 15,
   "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.7.1/app-release.apk",
-  "notes": "Refinements: semester pulse popup on home, live tracker in Full calendar, sleek timeline ticks, widget self-heals stale states with a class chain, About layout fixes, repo renamed to fast-utilities-android.",
-  "publishedAt": "2026-08-25"
+  "notes": "Semester pulse now pops up over Home from the timeline card, Full calendar shows a live Now week marker, timeline ticks are sleeker, About spacing fixed. Widgets self-heal: they roll from a class chain (no more stuck starting-now or 0m-left), and recover their correct size after idle. Repo renamed to fast-utilities-android.",
+  "publishedAt": "2026-08-27"
 }
