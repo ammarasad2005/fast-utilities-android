@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
@@ -51,11 +51,13 @@ export default function ExamsScreen() {
       setShowExams(false); // default hidden, matching the web client
     }
   }, []);
-  useEffect(() => {
-    // Fetching external state (admin toggle) — async, so no synchronous setState.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadVisibility();
-  }, [loadVisibility]);
+  // Re-check the admin toggle on every screen focus — the flag is a tiny
+  // JSON read, and focus is exactly when the user expects current truth.
+  useFocusEffect(
+    useCallback(() => {
+      loadVisibility();
+    }, [loadVisibility])
+  );
 
   const { data: allExams, isLoading, isFromCache, isRefreshing, error, refresh } =
     useCachedData<ExamEntry[]>('data:regular_schedule', fetchRegularSchedule, CACHE_TTL.schedule);
@@ -156,7 +158,16 @@ export default function ExamsScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.brand} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              loadVisibility();
+              refresh();
+            }}
+            tintColor={colors.brand}
+          />
+        }
       >
         <Text style={styles.title}>Exam Finder</Text>
         <Text style={styles.subtitle}>Every exam date & time for your batch and department.</Text>
