@@ -1,7 +1,9 @@
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { cacheSet } from '@/api/cache';
+import { checkTimetableChanges } from '@/notifications/classChanges';
 import { syncNextClassWidgetFromCache } from '@/widgets/nextClassWidget';
+import type { RawTimetableJSON } from '@/core/types';
 import {
   fetchFaculty,
   fetchFSCTimetable,
@@ -23,8 +25,9 @@ import {
  * continuously in the foreground.
  *
  * This is opportunistic (best-effort, OS-scheduled), NOT a guaranteed timer.
- * For prompt "your class was cancelled / room shifted" alerts, push
- * notifications are the right mechanism and will be layered on top of this.
+ * Class-change alerts layer on top of this: after the datasets are refreshed,
+ * a pure-JS diff checkTimetableChanges() compares the tagged timetable with
+ * the last-seen snapshot and posts local notifications for anything new.
  */
 
 export const BACKGROUND_SYNC_TASK = 'fast-utilities-background-sync';
@@ -35,9 +38,9 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
   try {
     // Fetch and persist each dataset independently so one failure doesn't
     // abort the rest. cache keys must match useCachedData()'s keys exactly.
-    await Promise.allSettled([
-      fetchFSCTimetable().then((d) => cacheSet('data:timetable:FSC', d)),
-      fetchFSMTimetable().then((d) => cacheSet('data:timetable:FSM', d)),
+    const results = await Promise.allSettled([
+      fetchFSCTimetable().then(async (d) => { await cacheSet('data:timetable:FSC', d); return d; }),
+      fetchFSMTimetable().then(async (d) => { await cacheSet('data:timetable:FSM', d); return d; }),
       fetchRegularSchedule().then((d) => cacheSet('data:regular_schedule', d)),
       fetchSummerSchedule().then((d) => cacheSet('data:summer_schedule', d)),
       fetchFaculty().then((d) => cacheSet('data:faculty', d)),
@@ -47,6 +50,12 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
     // Refresh the home-screen widget from the data we just cached, so it stays
     // current even when the app isn't running (native modules work headless).
     await syncNextClassWidgetFromCache();
+    // Diff the tagged timetable against the last-seen snapshot and notify on
+    // changes. Hand over the payload we just pulled so the check doesn't make
+    // a second network request; on fetch failure it fetches itself.
+    const fsc = results[0].status === 'fulfilled' ? (results[0].value as RawTimetableJSON) : undefined;
+    const fsm = results[1].status === 'fulfilled' ? (results[1].value as RawTimetableJSON) : undefined;
+    await checkTimetableChanges({ rawOverride: { FSC: fsc, FSM: fsm } });
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (err) {
     console.error('[background-sync] failed:', err);

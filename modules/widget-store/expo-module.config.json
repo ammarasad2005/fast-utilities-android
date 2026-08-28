@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["expo.modules.widgetstore.WidgetStoreModule", "expo.modules.widgetstore.AppUpdaterModule"]
+    "modules": ["expo.modules.widgetstore.WidgetStoreModule", "expo.modules.widgetstore.AppUpdaterModule", "expo.modules.widgetstore.NotifierModule"]
   }
 }

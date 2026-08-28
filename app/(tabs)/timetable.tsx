@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Linking,
   Modal,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -32,6 +34,15 @@ import {
   setSavedSchedule,
   type SavedSchedule,
 } from '@/prefs/savedSchedule';
+import {
+  checkTimetableChanges,
+  isClassChangeAlertsEnabled,
+  setClassChangeAlertsEnabled,
+} from '@/notifications/classChanges';
+import {
+  hasNotificationsPermission,
+  requestNotificationsPermission,
+} from '../../modules/widget-store/src/NotifierModule';
 import {
   computeDisplayedEntries,
   courseKeyOf,
@@ -93,11 +104,53 @@ export default function TimetableScreen() {
     }
   }, []);
 
-  // Reload the tag whenever the tab gains focus (it may change on other screens).
+  // ── Class-change alerts (opt-in toggle) ────────────────────────────────────
+  const [alertsOn, setAlertsOn] = useState(false);
+  const [alertsBlocked, setAlertsBlocked] = useState(false);
+
+  const reloadAlertState = useCallback(async () => {
+    const enabled = await isClassChangeAlertsEnabled();
+    setAlertsOn(enabled);
+    setAlertsBlocked(enabled && !hasNotificationsPermission());
+  }, []);
+
+  const onToggleAlerts = useCallback(async (next: boolean) => {
+    if (!next) {
+      await setClassChangeAlertsEnabled(false);
+      setAlertsOn(false);
+      setAlertsBlocked(false);
+      return;
+    }
+    const res = await requestNotificationsPermission();
+    if (res.granted) {
+      await setClassChangeAlertsEnabled(true);
+      setAlertsOn(true);
+      setAlertsBlocked(false);
+      // Immediate silent check: seeds the baseline if needed and catches any
+      // diff against the last stored snapshot within the cooldown budget.
+      void checkTimetableChanges({ foreground: true });
+    } else {
+      setAlertsOn(false);
+      Alert.alert(
+        'Notifications are off',
+        'Class-change alerts need the notifications permission. Allow notifications for Fast Utilities in Android settings, then turn this on again.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open settings', onPress: () => Linking.openSettings() },
+        ],
+      );
+    }
+  }, []);
+
+  // Reload per-screen state whenever the tab gains focus (it may change on
+  // other screens), and run an opportunistic throttled change check so active
+  // users get fresh diffs without waiting for the background task.
   useFocusEffect(
     useCallback(() => {
       reloadSaved();
-    }, [reloadSaved])
+      reloadAlertState();
+      void checkTimetableChanges({ foreground: true });
+    }, [reloadSaved, reloadAlertState])
   );
 
   // ── Data ────────────────────────────────────────────────────────────────────
@@ -448,6 +501,33 @@ export default function TimetableScreen() {
             <Text style={styles.tagBtnText}>Save this configuration as my timetable</Text>
           </Pressable>
         )}
+
+        {/* Class-change alerts toggle (only meaningful with a tagged timetable) */}
+        {saved ? (
+          <View style={styles.savedCard}>
+            <Ionicons
+              name={alertsOn ? 'notifications' : 'notifications-outline'}
+              size={16}
+              color={colors.brand}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.savedText}>Class change alerts</Text>
+              <Text style={styles.savedHint}>
+                {alertsBlocked
+                  ? 'Blocked by Android — open Settings to allow notifications'
+                  : alertsOn
+                    ? 'On — cancelled, rescheduled and room/time changes'
+                    : 'Notify me when my timetable changes'}
+              </Text>
+            </View>
+            <Switch
+              value={alertsOn}
+              onValueChange={onToggleAlerts}
+              trackColor={{ false: colors.border, true: colors.brand }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        ) : null}
 
         {isFromCache ? (
           <View style={{ marginTop: 12 }}>

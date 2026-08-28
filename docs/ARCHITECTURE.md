@@ -111,9 +111,28 @@ pull-to-refresh required. Pull-to-refresh still exists as an explicit force.
 read-heavy campus data and writes it to AsyncStorage — without the app running
 in the foreground. This is *opportunistic* (min 15-min interval, but the OS
 schedules actual runs to save battery / during Doze), so it keeps data
-eventually-fresh rather than guaranteeing a timer. Prompt "class cancelled /
-room shifted" alerts require push notifications (planned follow-up), which will
-layer on top of this sync.
+eventually-fresh rather than guaranteeing a timer.
+
+**Class-change alerts (`src/notifications/classChanges.ts` + `src/core/timetableDiff.ts`):**
+a pure client-side notification system layered on top of that same sync. Each
+run fetches the current `timetable.json` (reusing the sync's just-fetched
+payload when possible), resolves the entries belonging to the user's *tagged*
+timetable only (default config, honouring section picks, or a saved bundle)
+and diffs them against the last-seen snapshot stored in AsyncStorage. The diff
+engine first canonicalizes sessions (course/type/day identity + parsed slot
+minutes) so housekeeping JSON rewrites never count as changes, then classifies
+cancelled / restored / rescheduled-across-days / time-change / venue-change /
+added / removed — folding the sheet's "cancel old + add makeup elsewhere"
+idiom into a single *rescheduled* event. Alerts post via a tiny local Kotlin
+`Notifier` module in `modules/widget-store` (NotificationCompat, channel
+`class_changes`, launcher PendingIntent) — deliberately chosen over
+expo-notifications/FCM to keep the dependency set and APK size flat. Opt-in
+only: a switch on the Timetable tab requests `POST_NOTIFICATIONS`
+(Android 13+); the first run seeds the baseline silently; a 7-day signature
+ledger de-dupes across the co-run background task and throttled foreground
+focus checks. Latency is structural: OS-decided background intervals plus up
+to 1 h of CDN edge caching, i.e. minutes-to-about-an-hour, same as the data
+itself.
 
 TTLs are defined in `src/api/config.ts`. Dynamic/user-generated data (none in the
 core feature set) would not be cached this way.
