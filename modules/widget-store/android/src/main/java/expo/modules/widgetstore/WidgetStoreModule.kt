@@ -23,5 +23,25 @@ class WidgetStoreModule : Module() {
       WidgetRenderer.refresh(ctx)
       true
     }
+
+    Function("setExamSnapshot") { json: String ->
+      val ctx = appContext.reactContext ?: return@Function false
+      ctx.getSharedPreferences("fastutilities_widget", Context.MODE_PRIVATE)
+        .edit()
+        .putString("exam_snapshot", json)
+        .apply()
+      ExamWidgetRenderer.refresh(ctx)
+      true
+    }
+
+    Function("setSemesterSnapshot") { json: String ->
+      val ctx = appContext.reactContext ?: return@Function false
+      ctx.getSharedPreferences("fastutilities_widget", Context.MODE_PRIVATE)
+        .edit()
+        .putString("semester_snapshot", json)
+        .apply()
+      SemesterWidgetRenderer.refresh(ctx)
+      true
+    }
   }
 }

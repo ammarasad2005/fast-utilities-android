@@ -3,8 +3,11 @@ import * as TaskManager from 'expo-task-manager';
 import { cacheSet } from '@/api/cache';
 import { checkTimetableChanges } from '@/notifications/classChanges';
 import { syncNextClassWidgetFromCache } from '@/widgets/nextClassWidget';
+import { syncExamWidgetsFromCache } from '@/widgets/examWidgets';
+import { syncSemesterWidgetFromCache } from '@/widgets/semesterWidgets';
 import type { RawTimetableJSON } from '@/core/types';
 import {
+  fetchExamVisibility,
   fetchFaculty,
   fetchFSCTimetable,
   fetchFSMTimetable,
@@ -46,10 +49,13 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
       fetchFaculty().then((d) => cacheSet('data:faculty', d)),
       fetchSemesterCalendar().then((d) => cacheSet('data:semester', d)),
       fetchStudentEvents().then((d) => cacheSet('data:student_events', d)),
+      fetchExamVisibility().then((d) => cacheSet('data:exam_visibility', d)),
     ]);
-    // Refresh the home-screen widget from the data we just cached, so it stays
-    // current even when the app isn't running (native modules work headless).
+    // Refresh the home-screen widgets from the data we just cached, so they
+    // stay current even when the app isn't running (native modules work headless).
     await syncNextClassWidgetFromCache();
+    await syncExamWidgetsFromCache();
+    await syncSemesterWidgetFromCache();
     // Diff the tagged timetable against the last-seen snapshot and notify on
     // changes. Hand over the payload we just pulled so the check doesn't make
     // a second network request; on fetch failure it fetches itself.

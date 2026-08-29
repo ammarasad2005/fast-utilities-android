@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Semester · Month" — large 4x4; the calendar grid is canvas-drawn into
+     @id/sem_month (today ring + exam-day dots from your tagged exams). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/widget_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:orientation="vertical"
+  android:padding="12dp"
+  android:background="@drawable/widget_bg">
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal">
+
+    <TextView
+      android:id="@+id/sem_header"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:text="JANUARY 2026"
+      android:textSize="10sp"
+      android:textStyle="bold"
+      android:letterSpacing="0.12"
+      android:textColor="#FFC24B" />
+
+    <LinearLayout
+      android:layout_width="0dp"
+      android:layout_height="wrap_content"
+      android:layout_weight="1"
+      android:orientation="horizontal" />
+
+    <ImageButton
+      android:id="@+id/widget_refresh"
+      android:layout_width="34dp"
+      android:layout_height="34dp"
+      android:layout_gravity="center_vertical"
+      android:contentDescription="Refresh widget now"
+      android:background="@android:color/transparent"
+      android:scaleType="fitCenter"
+      android:src="@drawable/ic_widget_refresh" />
+  </LinearLayout>
+
+  <ImageView
+    android:id="@+id/sem_month"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
+    android:layout_marginTop="4dp"
+    android:scaleType="fitXY"
+    android:contentDescription="Month calendar with exam days marked" />
+
+  <TextView
+    android:id="@+id/sem_legend"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="2dp"
+    android:text="● exam day   ◉ today"
+    android:textSize="10sp"
+    android:textColor="#93A5BF"
+    android:maxLines="1" />
+</LinearLayout>

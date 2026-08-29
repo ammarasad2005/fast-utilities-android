@@ -1,9 +1,17 @@
 import { NativeModule, requireNativeModule } from 'expo';
 
-import type { NextClassWidgetSnapshot } from './WidgetStore.types';
+import type {
+  ExamWidgetItem,
+  ExamWidgetSnapshot,
+  NextClassWidgetSnapshot,
+  SemesterWidgetMilestone,
+  SemesterWidgetSnapshot,
+} from './WidgetStore.types';
 
 declare class WidgetStoreModule extends NativeModule {
   setSnapshot(json: string): boolean;
+  setExamSnapshot(json: string): boolean;
+  setSemesterSnapshot(json: string): boolean;
 }
 
 let cached: WidgetStoreModule | null | undefined;
@@ -24,4 +32,10 @@ export function getWidgetStore(): WidgetStoreModule | null {
   return cached;
 }
 
-export type { NextClassWidgetSnapshot };
+export type {
+  NextClassWidgetSnapshot,
+  ExamWidgetSnapshot,
+  ExamWidgetItem,
+  SemesterWidgetSnapshot,
+  SemesterWidgetMilestone,
+};

@@ -42,8 +42,10 @@ class WidgetRefreshReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action != ACTION) return
 
-    // Stage 1: instant repaint (rolls the class chain from absolute epochs)
+    // Stage 1: instant repaint (rolls every family from absolute epochs)
     WidgetRenderer.refresh(context)
+    ExamWidgetRenderer.refresh(context)
+    SemesterWidgetRenderer.refresh(context)
 
     // Stage 2: authoritative re-sync through the JS headless task
     enqueueSync(context)

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Semester · Next milestone" — compact 2x2 + standard 3x2 share this layout. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/widget_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:orientation="vertical"
+  android:padding="12dp"
+  android:background="@drawable/widget_bg">
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal">
+
+    <TextView
+      android:id="@+id/sem_header"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:text="SEMESTER"
+      android:textSize="10sp"
+      android:textStyle="bold"
+      android:letterSpacing="0.12"
+      android:textColor="#FFC24B" />
+
+    <LinearLayout
+      android:layout_width="0dp"
+      android:layout_height="wrap_content"
+      android:layout_weight="1"
+      android:orientation="horizontal" />
+
+    <ImageButton
+      android:id="@+id/widget_refresh"
+      android:layout_width="34dp"
+      android:layout_height="34dp"
+      android:layout_gravity="center_vertical"
+      android:contentDescription="Refresh widget now"
+      android:background="@android:color/transparent"
+      android:scaleType="fitCenter"
+      android:src="@drawable/ic_widget_refresh" />
+  </LinearLayout>
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
+    android:orientation="vertical" />
+
+  <TextView
+    android:id="@+id/sem_big"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="21"
+    android:textSize="30sp"
+    android:textStyle="bold"
+    android:textColor="#A9CCFF"
+    android:maxLines="1" />
+
+  <TextView
+    android:id="@+id/sem_unit"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="-4dp"
+    android:text="days until"
+    android:textSize="11sp"
+    android:textColor="#B9C6D8"
+    android:maxLines="1" />
+
+  <TextView
+    android:id="@+id/sem_milestone"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="2dp"
+    android:text="Final Examinations"
+    android:textSize="13sp"
+    android:textStyle="bold"
+    android:textColor="#FFFFFF"
+    android:maxLines="2"
+    android:ellipsize="end" />
+
+  <TextView
+    android:id="@+id/sem_date"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="1dp"
+    android:text="Mon 19 Jan"
+    android:textSize="10sp"
+    android:textColor="#93A5BF"
+    android:maxLines="1"
+    android:ellipsize="end" />
+</LinearLayout>

@@ -1,8 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="widget_label_compact">Next Class — Compact (2×2)</string>
-  <string name="widget_label_standard">Next Class — Standard (3×2)</string>
-  <string name="widget_label_wide">Next Class — Wide (4×2)</string>
-  <string name="widget_label_large">Next Class — Large (4×4)</string>
+  <!-- Picker labels are PREFIXED BY FAMILY ("Timetable ·", "Exams ·",
+       "Semester ·") so same-category widgets sort together in the launcher
+       picker — Android has no native category folders, alphabetical grouping
+       of the labels is the closest user-visible grouping. -->
+  <string name="widget_label_compact">Timetable · Next Class (2×2)</string>
+  <string name="widget_label_standard">Timetable · Next Class (3×2)</string>
+  <string name="widget_label_wide">Timetable · Next Class (4×2)</string>
+  <string name="widget_label_large">Timetable · Next Class (4×4)</string>
   <string name="widget_next_class_desc">Shows the class in progress or your next class from your tagged FAST Utilities timetable.</string>
+
+  <string name="widget_label_exam_countdown_compact">Exams · Countdown (2×2)</string>
+  <string name="widget_label_exam_countdown_standard">Exams · Countdown (3×2)</string>
+  <string name="widget_exam_countdown_desc">Big days-left countdown to your next exam from your tagged exams.</string>
+
+  <string name="widget_label_exam_next_standard">Exams · Next Exam (3×2)</string>
+  <string name="widget_label_exam_next_wide">Exams · Next Exam (4×2)</string>
+  <string name="widget_exam_next_desc">Next or ongoing exam with time remaining and a live progress bar while it runs.</string>
+
+  <string name="widget_label_exam_list_wide">Exams · My Exams (4×2)</string>
+  <string name="widget_label_exam_list_large">Exams · My Exams (4×4)</string>
+  <string name="widget_exam_list_desc">Your upcoming personal exams from your tagged exam selection or custom exam schedule.</string>
+
+  <string name="widget_label_semester_countdown_compact">Semester · Next Milestone (2×2)</string>
+  <string name="widget_label_semester_countdown_standard">Semester · Next Milestone (3×2)</string>
+  <string name="widget_semester_countdown_desc">Countdown to the next semester milestone (sessionals, finals, semester end).</string>
+
+  <string name="widget_label_semester_timeline_wide">Semester · Timeline (4×2)</string>
+  <string name="widget_label_semester_timeline_large">Semester · Timeline (4×4)</string>
+  <string name="widget_semester_timeline_desc">Live semester progress line with S1/S2/finals milestones and a today marker.</string>
+
+  <string name="widget_label_semester_month">Semester · Month (4×4)</string>
+  <string name="widget_semester_month_desc">This month as a mini calendar with your exam days marked.</string>
 </resources>

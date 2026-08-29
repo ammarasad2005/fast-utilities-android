@@ -36,6 +36,8 @@ import {
   setSavedExams,
   type SavedExams,
 } from '@/prefs/savedExams';
+import { syncExamWidgetsFromCache } from '@/widgets/examWidgets';
+import { syncSemesterWidgetFromCache } from '@/widgets/semesterWidgets';
 import { Chip, EmptyState, ErrorState, LoadingState, OfflineNotice, SectionHeader } from '@/components/ui';
 
 export default function ExamsScreen() {
@@ -121,6 +123,8 @@ export default function ExamsScreen() {
     const applyTag = async () => {
       await setSavedExams({ kind: 'default', school, batch: effectiveBatch, dept: effectiveDept });
       setSavedExamsState(await getSavedExams());
+      void syncExamWidgetsFromCache();
+      void syncSemesterWidgetFromCache();
     };
     if (savedExams) {
       const holder = describeSavedExams(savedExams);
@@ -155,7 +159,11 @@ export default function ExamsScreen() {
 
   const onRemoveTag = () => {
     Haptics.selectionAsync().catch(() => {});
-    clearSavedExams().then(async () => setSavedExamsState(await getSavedExams()));
+    clearSavedExams().then(async () => {
+      setSavedExamsState(await getSavedExams());
+      void syncExamWidgetsFromCache();
+      void syncSemesterWidgetFromCache();
+    });
   };
 
   const onCopy = async (e: ExamEntry) => {

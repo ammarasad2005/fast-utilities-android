@@ -38,6 +38,8 @@ import {
   type ExamBundleRow,
   type ExamCustomBundle,
 } from '@/prefs/examBundles';
+import { syncExamWidgetsFromCache } from '@/widgets/examWidgets';
+import { syncSemesterWidgetFromCache } from '@/widgets/semesterWidgets';
 import { CourseSectionSelect } from '@/components/CourseSectionSelect';
 import { Dropdown } from '@/components/Dropdown';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -232,6 +234,8 @@ export default function CustomExamsScreen() {
     setActiveBundleId(bundle.id);
     setEditingBundleId(null);
     setMode('view');
+    void syncExamWidgetsFromCache();
+    void syncSemesterWidgetFromCache();
     if (!(savedExams?.kind === 'bundle' && savedExams.bundleId === bundle.id)) {
       setPrefPromptOpen(true);
     }
@@ -261,6 +265,8 @@ export default function CustomExamsScreen() {
               setSavedExamsState(await getSavedExams());
             }
             startFreshBuild();
+            void syncExamWidgetsFromCache();
+            void syncSemesterWidgetFromCache();
           },
         },
       ]
@@ -274,6 +280,8 @@ export default function CustomExamsScreen() {
   const tagThisCustom = async (b: Bundle) => {
     await setSavedExams({ kind: 'bundle', bundleId: b.id });
     setSavedExamsState(await getSavedExams());
+    void syncExamWidgetsFromCache();
+    void syncSemesterWidgetFromCache();
   };
 
   const toggleTag = async (b: Bundle) => {
@@ -281,6 +289,8 @@ export default function CustomExamsScreen() {
     if (isBundleTagged(b.id)) {
       await clearSavedExams();
       setSavedExamsState(await getSavedExams());
+      void syncExamWidgetsFromCache();
+      void syncSemesterWidgetFromCache();
       return;
     }
     if (savedExams) {

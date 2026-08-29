@@ -45,6 +45,8 @@ import { loadBundles, type CustomBundle } from '@/prefs/bundles';
 import { buildSnapshot, publishNextClassWidget } from '@/widgets/nextClassWidget';
 import { UpdateBanner } from '@/components/UpdateBanner';
 import { checkForUpdateNow, dismissUpdate, type RemoteVersion } from '@/updates/checkUpdate';
+import { syncExamWidgetsFromCache } from '@/widgets/examWidgets';
+import { syncSemesterWidgetFromCache } from '@/widgets/semesterWidgets';
 
 type Feature = {
   id: string;
@@ -136,6 +138,10 @@ export default function HomeScreen() {
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') runCheck();
     });
+    // Keep exam/semester widgets fresh on app open (reads caches only; the
+    // publishers dedupe identical payloads, so this is a cheap no-op usually).
+    void syncExamWidgetsFromCache();
+    void syncSemesterWidgetFromCache();
     return () => {
       active = false;
       sub.remove();

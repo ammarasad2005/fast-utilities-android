@@ -24,3 +24,54 @@ export type NextClassWidgetSnapshot = {
   /** When the snapshot was computed (ms). */
   updatedAt: number;
 };
+
+/** One personal exam row as the native exam widgets render it. */
+export type ExamWidgetItem = {
+  course: string;
+  code: string;
+  /** "Mon 12 Jan" */
+  dateLabel: string;
+  /** Raw schedule window, e.g. "09:00 AM – 11:00 AM". */
+  timeLabel: string;
+  startEpochMs: number;
+  endEpochMs: number;
+  room?: string;
+};
+
+/**
+ * Snapshot for ALL exam widget variants (countdown / next-exam status / exam
+ * list). Chronological `items` is the single source of truth: the native
+ * renderer picks the next-or-ongoing exam itself by comparing epochs to now,
+ * so it self-heals across midnight without any JS.
+ */
+export type ExamWidgetSnapshot = {
+  state: 'ok' | 'needsTag' | 'hidden' | 'empty';
+  items?: ExamWidgetItem[];
+  updatedAt: number;
+};
+
+/** One milestone dot on the semester timeline widget. */
+export type SemesterWidgetMilestone = {
+  label: string;
+  shortLabel: string; // S1 / S2 / FE / START / END
+  /** Day-aligned epoch (local midnight). */
+  epochMs: number;
+  /** Position on the timeline, 0–100. */
+  pct: number;
+};
+
+/**
+ * Snapshot for ALL semester widget variants (timeline / milestone countdown /
+ * month card). The native side derives day-index, countdowns and the current
+ * month grid; JS only ships absolute epochs so midnight rollover is JS-free.
+ */
+export type SemesterWidgetSnapshot = {
+  state: 'ok' | 'empty';
+  name: string; // "Fall 2025"
+  startEpochMs: number;
+  endEpochMs: number; // timeline end (finals end if present, else semester end)
+  milestones: SemesterWidgetMilestone[];
+  /** Day-aligned epochs of the user's personal exams (month-card dots). */
+  examDays: number[];
+  updatedAt: number;
+};

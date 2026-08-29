@@ -24,6 +24,8 @@ class WidgetUnlockReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action == Intent.ACTION_USER_PRESENT) {
       WidgetRenderer.refresh(context)
+      ExamWidgetRenderer.refresh(context)
+      SemesterWidgetRenderer.refresh(context)
     }
   }
 }

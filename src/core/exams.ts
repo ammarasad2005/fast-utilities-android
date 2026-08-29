@@ -3,6 +3,26 @@
  */
 
 import { SCHOOL_DEPARTMENTS, type ExamEntry, type FilterState } from './types';
+import { parseTime24 } from './dates';
+
+/**
+ * "09:00 AM – 11:00 AM" / "2:00 to 5:00 PM" → { start, end } minutes past
+ * midnight. Handles en/em dashes, "to", and a shared trailing meridiem
+ * ("9:00 to 12:00 PM"). If the end parses before the start (AM/PM omitted on
+ * the later bound), +12h is added. Unparseable → {0,0}.
+ */
+export function parseExamTimeRange(range: string): { start: number; end: number } {
+  if (!range) return { start: 0, end: 0 };
+  const parts = range
+    .split(/\s+[–—-]\s+|\s+to\s+/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return { start: 0, end: 0 };
+  const start = parseTime24(parts[0]);
+  let end = parseTime24(parts[1]);
+  if (end <= start) end += 12 * 60;
+  return { start, end };
+}
 
 /** Department → owning school ('ALL' summer rows default to FSC). */
 export function departmentSchool(dept: string): string | null {
