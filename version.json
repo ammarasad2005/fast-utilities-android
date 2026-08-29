@@ -1,6 +1,6 @@
 {
-  "versionCode": 15,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.7.1/app-release.apk",
-  "notes": "Semester pulse now pops up over Home from the timeline card, Full calendar shows a live Now week marker, timeline ticks are sleeker, About spacing fixed. Widgets self-heal: they roll from a class chain (no more stuck starting-now or 0m-left), and recover their correct size after idle. Repo renamed to fast-utilities-android.",
-  "publishedAt": "2026-08-27"
+  "versionCode": 16,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.8.0/app-release.apk",
+  "notes": "Class change alerts: opt-in local notifications when your tagged timetable changes — cancellations, reschedules (day-to-day), time and room moves, new/removed sessions. Works with the app closed via background sync; enable the switch on the Timetable tab (Android 13+ asks once). Also: exam list re-checks availability on every screen focus.",
+  "publishedAt": "2026-08-29"
 }
