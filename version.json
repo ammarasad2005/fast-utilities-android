@@ -1,6 +1,6 @@
 {
-  "versionCode": 20,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.3/app-release.apk",
-  "notes": "Course picker, refined: the whole sheet now scrolls from anywhere (drag on title, rows or gaps alike), and there is a sleek directional scrollbar with ▲/▼ steppers on the right edge.",
+  "versionCode": 21,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.4/app-release.apk",
+  "notes": "Update prompts are now reliable: a failed check no longer postpones the alert by hours, the manifest has backup servers if one is unreachable, dismissing an update snoozes it for 12h instead of losing it, and the app re-checks whenever you return. Also new: About screen has an App updates card with a manual Check now button.",
   "publishedAt": "2026-08-29"
 }
