@@ -1,6 +1,6 @@
 {
-  "versionCode": 22,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.5/app-release.apk",
-  "notes": "Custom Exam Schedule now works exactly like Custom Timetable: pick by SCHOOL (FSC / FSM / FSE), then batch, department and course by NAME (no more code-only dropdowns). One saved schedule instead of bundles — Save to keep it, then optionally set it as your exam preference (bookmark). The exam preference is new and separate from your timetable preference, ready to power the upcoming exam widgets. The Exams tab also gets a bookmark to tag your default selection.",
+  "versionCode": 23,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.0.0/app-release.apk",
+  "notes": "Two new home-screen widget families, powered by your exam and timetable tags separately: EXAMS — Countdown (big days-left number), Next exam (next or in-progress, with time remaining and progress bar), My exams (your personal upcoming list); SEMESTER — Next milestone countdown, live semester Timeline with a today marker and S1/S2/finals dots, and a Month calendar with your exam days marked. All widgets refresh on unlock, on tap of the refresh icon, and in the background. Find them in the widget picker under Exams · and Semester · (existing one is now Timetable · Next Class).",
   "publishedAt": "2026-08-29"
 }
