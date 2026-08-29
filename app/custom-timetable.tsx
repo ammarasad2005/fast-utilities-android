@@ -46,6 +46,7 @@ import {
 } from '@/prefs/bundles';
 import { DaySection } from '@/components/DaySection';
 import { Dropdown } from '@/components/Dropdown';
+import { CourseSectionSelect } from '@/components/CourseSectionSelect';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { WeekGrid, type WeekGridDay } from '@/components/WeekGrid';
 import { EmptyState, ErrorState, LoadingState, SectionHeader } from '@/components/ui';
@@ -165,16 +166,24 @@ export default function CustomTimetableScreen() {
     [buildEntries]
   );
 
-  const selectionsFor = useCallback(
+  /** Courses for a row grouped by name: course once, sections in sheet
+   *  order — feeds the grouped course+section sheet. */
+  const courseGroupsFor = useCallback(
     (batch: string, dept: string, category: string) => {
       if (!batch || !dept) return [];
-      const seen = new Set<string>();
+      const map = new Map<string, Set<string>>();
       for (const e of buildEntries) {
         if (e.batch === batch && e.department === dept && e.category === category) {
-          seen.add(`${e.courseName} | ${e.section}`);
+          if (!map.has(e.courseName)) map.set(e.courseName, new Set());
+          map.get(e.courseName)!.add(e.section);
         }
       }
-      return [...seen].sort((a, b) => a.localeCompare(b));
+      return [...map.entries()]
+        .map(([courseName, secs]) => ({
+          courseName,
+          sections: [...secs].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+        }))
+        .sort((a, b) => a.courseName.localeCompare(b.courseName));
     },
     [buildEntries]
   );
@@ -492,11 +501,12 @@ export default function CustomTimetableScreen() {
                 />
 
                 <Text style={styles.fieldLabel}>Course &amp; section</Text>
-                <Dropdown
+                <CourseSectionSelect
                   value={row.selection || null}
                   placeholder={row.dept ? 'Select course & section' : 'Select dept first'}
-                  options={selectionsFor(row.batch, row.dept, row.category).map((s) => ({ value: s, label: s }))}
+                  groups={courseGroupsFor(row.batch, row.dept, row.category)}
                   onSelect={(s) => updateRow(row.id, { selection: s })}
+                  disabled={!row.dept}
                 />
               </View>
             ))}
