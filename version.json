@@ -1,6 +1,6 @@
 {
-  "versionCode": 18,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.1/app-release.apk",
-  "notes": "Custom timetable builder: the course picker is now grouped beautifully — each course appears once with its sections as chips beside it (same style as Electives & other courses), replacing the repeated course-per-section dropdown.",
+  "versionCode": 19,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.2/app-release.apk",
+  "notes": "Fix: scrolling in the course picker sheet (and batch/dept dropdowns, electives chips) now works reliably — drags that start on a section chip no longer get swallowed.",
   "publishedAt": "2026-08-29"
 }
