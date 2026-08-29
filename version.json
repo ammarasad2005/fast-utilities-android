@@ -1,6 +1,6 @@
 {
-  "versionCode": 19,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.2/app-release.apk",
-  "notes": "Fix: scrolling in the course picker sheet (and batch/dept dropdowns, electives chips) now works reliably — drags that start on a section chip no longer get swallowed.",
+  "versionCode": 20,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.3/app-release.apk",
+  "notes": "Course picker, refined: the whole sheet now scrolls from anywhere (drag on title, rows or gaps alike), and there is a sleek directional scrollbar with ▲/▼ steppers on the right edge.",
   "publishedAt": "2026-08-29"
 }
