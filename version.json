@@ -1,6 +1,6 @@
 {
-  "versionCode": 23,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.0.0/app-release.apk",
-  "notes": "Two new home-screen widget families, powered by your exam and timetable tags separately: EXAMS — Countdown (big days-left number), Next exam (next or in-progress, with time remaining and progress bar), My exams (your personal upcoming list); SEMESTER — Next milestone countdown, live semester Timeline with a today marker and S1/S2/finals dots, and a Month calendar with your exam days marked. All widgets refresh on unlock, on tap of the refresh icon, and in the background. Find them in the widget picker under Exams · and Semester · (existing one is now Timetable · Next Class).",
+  "versionCode": 24,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.0.1/app-release.apk",
+  "notes": "Polish: every exam and semester widget now shows its own accurate preview in the launcher widget picker (countdown number, timeline with milestone dots, month calendar, exam list) instead of a generic image, so you can tell exactly what you are adding. No functional changes.",
   "publishedAt": "2026-08-29"
 }
