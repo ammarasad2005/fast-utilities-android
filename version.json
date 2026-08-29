@@ -1,6 +1,6 @@
 {
-  "versionCode": 17,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.0/app-release.apk",
-  "notes": "Navigation & UX refresh: floating pill tab bar above Android buttons (Rooms · Exams · Home · Timetable · More) — swipe anywhere to move between screens in one circular chain; timetable grid today-column now complements every theme incl. dark; electives & other courses now open in a sleek panel right under Section; custom timetable is simpler — one timetable, plain Save, clear preference prompt; Home grid starts with Timetable.",
+  "versionCode": 18,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.1/app-release.apk",
+  "notes": "Custom timetable builder: the course picker is now grouped beautifully — each course appears once with its sections as chips beside it (same style as Electives & other courses), replacing the repeated course-per-section dropdown.",
   "publishedAt": "2026-08-29"
 }
