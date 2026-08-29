@@ -1,6 +1,6 @@
 {
-  "versionCode": 16,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.8.0/app-release.apk",
-  "notes": "Class change alerts: opt-in local notifications when your tagged timetable changes — cancellations, reschedules (day-to-day), time and room moves, new/removed sessions. Works with the app closed via background sync; enable the switch on the Timetable tab (Android 13+ asks once). Also: exam list re-checks availability on every screen focus.",
+  "versionCode": 17,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.0/app-release.apk",
+  "notes": "Navigation & UX refresh: floating pill tab bar above Android buttons (Rooms · Exams · Home · Timetable · More) — swipe anywhere to move between screens in one circular chain; timetable grid today-column now complements every theme incl. dark; electives & other courses now open in a sleek panel right under Section; custom timetable is simpler — one timetable, plain Save, clear preference prompt; Home grid starts with Timetable.",
   "publishedAt": "2026-08-29"
 }
