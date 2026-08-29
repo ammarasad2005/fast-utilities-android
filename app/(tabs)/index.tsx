@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AppState,
   Image,
   Modal,
   Pressable,
@@ -43,7 +44,7 @@ import { getSavedSchedule, type SavedSchedule } from '@/prefs/savedSchedule';
 import { loadBundles, type CustomBundle } from '@/prefs/bundles';
 import { buildSnapshot, publishNextClassWidget } from '@/widgets/nextClassWidget';
 import { UpdateBanner } from '@/components/UpdateBanner';
-import { checkForUpdateNow, type RemoteVersion } from '@/updates/checkUpdate';
+import { checkForUpdateNow, dismissUpdate, type RemoteVersion } from '@/updates/checkUpdate';
 
 type Feature = {
   id: string;
@@ -119,15 +120,25 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  // Sideload update check — throttled inside (only a few network hits/day).
+  // Sideload update check — throttled inside (a few network hits/day) with a
+  // failure-safe throttle + cached manifest, so a flaky connection can no
+  // longer swallow an available update. Re-checked on every app foreground;
+  // "Later" snoozes per version instead of hiding the update for hours.
   const [updateInfo, setUpdateInfo] = useState<RemoteVersion | null>(null);
   useEffect(() => {
     let active = true;
-    checkForUpdateNow().then((v) => {
-      if (active) setUpdateInfo(v);
+    const runCheck = () => {
+      checkForUpdateNow().then((v) => {
+        if (active) setUpdateInfo((prev) => v ?? prev);
+      });
+    };
+    runCheck();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') runCheck();
     });
     return () => {
       active = false;
+      sub.remove();
     };
   }, []);
 
@@ -235,7 +246,15 @@ export default function HomeScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {updateInfo ? <UpdateBanner remote={updateInfo} onDismiss={() => setUpdateInfo(null)} /> : null}
+        {updateInfo ? (
+          <UpdateBanner
+            remote={updateInfo}
+            onDismiss={() => {
+              dismissUpdate(updateInfo.versionCode); // snooze 12h, not lose
+              setUpdateInfo(null);
+            }}
+          />
+        ) : null}
         {/* Header */}
         <View style={styles.header}>
           <Image source={require('../../assets/images/icon.png')} style={styles.logo} />

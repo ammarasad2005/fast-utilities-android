@@ -6,6 +6,7 @@ import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { API_BASE_URL } from '@/api/config';
 import { Card } from '@/components/ui';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { UpdateCheckCard } from '@/components/UpdateCheckCard';
 
 export default function AboutScreen() {
   const styles = useStyles(makeStyles);
@@ -24,6 +25,10 @@ export default function AboutScreen() {
             free rooms, faculty info, semester plan and campus events, all in one place.
           </Text>
         </Card>
+
+        <View style={{ marginTop: 16 }}>
+          <UpdateCheckCard />
+        </View>
 
         <View style={{ marginTop: 16 }}>
           <Card>
