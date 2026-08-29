@@ -1,6 +1,6 @@
 {
-  "versionCode": 21,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.4/app-release.apk",
-  "notes": "Update prompts are now reliable: a failed check no longer postpones the alert by hours, the manifest has backup servers if one is unreachable, dismissing an update snoozes it for 12h instead of losing it, and the app re-checks whenever you return. Also new: About screen has an App updates card with a manual Check now button.",
+  "versionCode": 22,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v1.9.5/app-release.apk",
+  "notes": "Custom Exam Schedule now works exactly like Custom Timetable: pick by SCHOOL (FSC / FSM / FSE), then batch, department and course by NAME (no more code-only dropdowns). One saved schedule instead of bundles — Save to keep it, then optionally set it as your exam preference (bookmark). The exam preference is new and separate from your timetable preference, ready to power the upcoming exam widgets. The Exams tab also gets a bookmark to tag your default selection.",
   "publishedAt": "2026-08-29"
 }
