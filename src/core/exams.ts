@@ -2,7 +2,86 @@
  * Exam schedule filtering / grouping — ported from src/lib/filter.ts.
  */
 
-import type { ExamEntry, FilterState } from './types';
+import { SCHOOL_DEPARTMENTS, type ExamEntry, type FilterState } from './types';
+
+/** Department → owning school ('ALL' summer rows default to FSC). */
+export function departmentSchool(dept: string): string | null {
+  for (const [school, depts] of Object.entries(SCHOOL_DEPARTMENTS)) {
+    if (depts.includes(dept)) return school;
+  }
+  return null;
+}
+
+/** Subset of a custom-exam builder row the matcher needs. */
+export interface ExamMatchRow {
+  batch: string;
+  dept: string;
+  selection: string; // "Course Name | CODE" (name may be '' for legacy rows)
+}
+
+/**
+ * Courses for a batch/dept within one school, grouped by NAME with the
+ * course codes inline (mirrors the timetable picker's course→section
+ * groups; exams have no sections, so the chip slot carries the code —
+ * usually exactly one).
+ */
+export function courseGroupsForExams(
+  entries: ExamEntry[],
+  school: string,
+  batch: string,
+  dept: string
+): { courseName: string; sections: string[] }[] {
+  if (!batch || !dept) return [];
+  const map = new Map<string, Set<string>>();
+  for (const e of entries) {
+    if (e.school !== school || e.batch !== batch || e.department !== dept) continue;
+    if (!map.has(e.courseName)) map.set(e.courseName, new Set());
+    map.get(e.courseName)!.add(e.courseCode);
+  }
+  return [...map.entries()]
+    .map(([courseName, codes]) => ({
+      courseName,
+      sections: [...codes].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    }))
+    .sort((a, b) => a.courseName.localeCompare(b.courseName));
+}
+
+/**
+ * Match a set of builder rows against the exam schedule → concrete exams.
+ * A row participates only when fully specified (batch + dept + selection).
+ * Selection "Name | CODE" matches both fields; a leading empty name
+ * (legacy `| CODE` rows) matches by code alone. Rows are school-scoped:
+ * entries from other schools never leak in.
+ */
+export function matchExamRows(
+  entries: ExamEntry[],
+  rows: ExamMatchRow[],
+  school: string
+): ExamEntry[] {
+  const out: ExamEntry[] = [];
+  for (const r of rows) {
+    if (!r.batch || !r.dept || !r.selection) continue;
+    // Legacy code-only rows are normalized to "| CODE" (no leading name part).
+    let name: string;
+    let code: string;
+    if (r.selection.startsWith('| ')) {
+      name = '';
+      code = r.selection.slice(2);
+    } else {
+      const sep = r.selection.lastIndexOf(' | ');
+      name = sep >= 0 ? r.selection.slice(0, sep) : r.selection;
+      code = sep >= 0 ? r.selection.slice(sep + 3) : '';
+    }
+    for (const e of entries) {
+      if (e.school !== school) continue;
+      if (e.batch !== r.batch || e.department !== r.dept) continue;
+      if (name && e.courseName !== name) continue;
+      if (code && e.courseCode !== code) continue;
+      out.push(e);
+    }
+  }
+  return sortByChronological(out);
+}
 
 export function filterExams(entries: ExamEntry[], filter: FilterState): ExamEntry[] {
   const q = filter.query.toLowerCase().trim();

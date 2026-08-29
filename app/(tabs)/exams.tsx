@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -28,6 +29,13 @@ import {
 } from '@/core/exams';
 import { SCHOOL_DEPARTMENTS, SCHOOLS, type ExamEntry } from '@/core/types';
 import { getDaysUntil } from '@/core/dates';
+import {
+  clearSavedExams,
+  describeSavedExams,
+  getSavedExams,
+  setSavedExams,
+  type SavedExams,
+} from '@/prefs/savedExams';
 import { Chip, EmptyState, ErrorState, LoadingState, OfflineNotice, SectionHeader } from '@/components/ui';
 
 export default function ExamsScreen() {
@@ -59,6 +67,21 @@ export default function ExamsScreen() {
     }, [loadVisibility])
   );
 
+  // Exam-preference tag (separate from the timetable tag — exam widgets read
+  // this one). Reloaded on focus so tagging elsewhere reflects here.
+  const [savedExams, setSavedExamsState] = useState<SavedExams | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let on = true;
+      getSavedExams().then((v) => {
+        if (on) setSavedExamsState(v);
+      });
+      return () => {
+        on = false;
+      };
+    }, [])
+  );
+
   const { data: allExams, isLoading, isFromCache, isRefreshing, error, refresh } =
     useCachedData<ExamEntry[]>('data:regular_schedule', fetchRegularSchedule, CACHE_TTL.schedule);
 
@@ -85,6 +108,55 @@ export default function ExamsScreen() {
   }, [allExams, effectiveBatch, school, effectiveDept, query]);
 
   const grouped = useMemo(() => groupByDay(filtered), [filtered]);
+
+  // ── Exam preference tag (mirror of the timetable tab's, separate store) ──
+  const isCurrentTagged =
+    savedExams?.kind === 'default' &&
+    savedExams.school === school &&
+    savedExams.batch === effectiveBatch &&
+    savedExams.dept === effectiveDept;
+
+  const onTagDefault = () => {
+    Haptics.selectionAsync().catch(() => {});
+    const applyTag = async () => {
+      await setSavedExams({ kind: 'default', school, batch: effectiveBatch, dept: effectiveDept });
+      setSavedExamsState(await getSavedExams());
+    };
+    if (savedExams) {
+      const holder = describeSavedExams(savedExams);
+      Alert.alert(
+        'An exam preference is already saved',
+        `Your exam preference is currently ${holder}. A preference must be removed before another can take its place.`,
+        [
+          { text: 'Keep current', style: 'cancel' },
+          {
+            text: 'Remove & use this',
+            onPress: async () => {
+              await clearSavedExams();
+              await applyTag();
+            },
+          },
+        ]
+      );
+      return;
+    }
+    Alert.alert(
+      'Keep this as your exam preference?',
+      'This selection becomes your exams and will power:\n' +
+        '  •  the exam countdown / next-exam home-screen widgets\n' +
+        '  •  your personal exam list widget\n\n' +
+        'It is managed separately from your timetable preference.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Keep as preference', onPress: () => void applyTag() },
+      ]
+    );
+  };
+
+  const onRemoveTag = () => {
+    Haptics.selectionAsync().catch(() => {});
+    clearSavedExams().then(async () => setSavedExamsState(await getSavedExams()));
+  };
 
   const onCopy = async (e: ExamEntry) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -223,6 +295,41 @@ export default function ExamsScreen() {
           ))}
         </View>
 
+        {/* Exam preference tag (separate from the timetable tag) */}
+        {savedExams?.kind === 'bundle' ? (
+          <Pressable
+            onPress={() => router.push('/custom-exams')}
+            android_ripple={{ color: colors.border }}
+            style={({ pressed }) => [styles.savedCard, pressed && { opacity: 0.85 }]}
+          >
+            <Ionicons name="bookmark" size={16} color={colors.brand} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.savedText}>My exams: custom exam schedule</Text>
+              <Text style={styles.savedHint}>Shown in Custom Exam Schedule · tap to open</Text>
+            </View>
+            <Pressable onPress={onRemoveTag} hitSlop={8}>
+              <Text style={styles.savedRemove}>Remove</Text>
+            </Pressable>
+          </Pressable>
+        ) : isCurrentTagged ? (
+          <View style={styles.savedCard}>
+            <Ionicons name="bookmark" size={16} color={colors.brand} />
+            <Text style={[styles.savedText, { flex: 1 }]}>My exams — this selection</Text>
+            <Pressable onPress={onRemoveTag} hitSlop={8}>
+              <Text style={styles.savedRemove}>Remove</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            onPress={onTagDefault}
+            android_ripple={{ color: colors.border }}
+            style={({ pressed }) => [styles.tagBtn, pressed && { opacity: 0.85 }]}
+          >
+            <Ionicons name="bookmark-outline" size={16} color={colors.brand} />
+            <Text style={styles.tagBtnText}>Save this selection as my exams</Text>
+          </Pressable>
+        )}
+
         {/* Search */}
         <SectionHeader title="Search" />
         <View style={styles.searchBox}>
@@ -355,6 +462,34 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   examName: { fontSize: 15, fontWeight: '600', color: colors.text },
   examMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   examMeta: { fontSize: 13, color: colors.textSecondary },
+  savedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.infoBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.brand,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 6,
+  },
+  savedText: { fontSize: 13, fontWeight: '700', color: colors.brand },
+  savedHint: { fontSize: 11, color: colors.textSecondary, marginTop: 1 },
+  savedRemove: { fontSize: 13, fontWeight: '700', color: colors.danger },
+  tagBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.brand,
+    borderStyle: 'dashed',
+    marginTop: 6,
+  },
+  tagBtnText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
   noExamsWrap: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 16 },
   noExamsIcon: {
     width: 88,
