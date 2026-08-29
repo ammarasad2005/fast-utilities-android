@@ -153,8 +153,11 @@ object ExamWidgetRenderer {
         views.setTextColor(R.id.exam_header, if (ongoing) C_HEADER_ONGOING else C_HEADER_NEXT)
         if (ongoing) {
           views.setTextViewText(R.id.exam_big, "NOW")
-          views.setTextViewText(R.id.exam_unit, cur.endMs - now > 60_000
-            ? "${formatDuration(((cur.endMs - now) / 60_000L).toInt())} left" : "ends shortly")
+          val leftMin = ((cur.endMs - now) / 60_000L).toInt()
+          views.setTextViewText(
+            R.id.exam_unit,
+            if (leftMin > 1) "${formatDuration(leftMin)} left" else "ends shortly"
+          )
         } else {
           val ms = cur.startMs - now
           if (ms < 24L * 60L * 60L * 1000L) {
