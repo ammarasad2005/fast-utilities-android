@@ -43,7 +43,11 @@ export function Dropdown<T extends string | number>({
 
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
+          {/* Sheet: claims taps so they don't bubble to the dismiss-backdrop,
+              but YIELDS to the option list's drag (same Android responder
+              fix as CourseSectionSelect — pressables-in-modals starve lists
+              of chip-start drags). */}
+          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>{placeholder}</Text>
             <FlatList
@@ -76,7 +80,7 @@ export function Dropdown<T extends string | number>({
               )}
               style={{ maxHeight: 320 }}
             />
-          </Pressable>
+          </View>
         </Pressable>
       </Modal>
     </>

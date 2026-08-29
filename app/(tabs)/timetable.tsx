@@ -626,6 +626,7 @@ export default function TimetableScreen() {
                         return (
                           <Pressable
                             key={sec}
+                            unstable_pressDelay={90}
                             onPress={() => toggleElective(g.key, sec)}
                             style={[styles.electiveSectionChip, picked && { backgroundColor: colors.brand, borderColor: colors.brand }]}
                           >

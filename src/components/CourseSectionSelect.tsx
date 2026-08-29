@@ -57,7 +57,10 @@ export function CourseSectionSelect({
 
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
+          {/* Sheet: claims taps so they don't bubble to the dismiss-backdrop,
+              but YIELDS to the list's drag (termination grants) — the
+              respondent Pressable pattern it replaces ate chip-start drags. */}
+          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>{placeholder}</Text>
             <FlatList
@@ -75,6 +78,7 @@ export function CourseSectionSelect({
                       return (
                         <Pressable
                           key={sec}
+                          unstable_pressDelay={90}
                           onPress={() => {
                             onSelect(pickValue);
                             setOpen(false);
@@ -97,7 +101,7 @@ export function CourseSectionSelect({
               style={{ maxHeight: 340 }}
               showsVerticalScrollIndicator={false}
             />
-          </Pressable>
+          </View>
         </Pressable>
       </Modal>
     </>
