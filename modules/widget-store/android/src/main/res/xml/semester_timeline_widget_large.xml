@@ -5,7 +5,7 @@
   android:targetCellWidth="4"
   android:targetCellHeight="4"
   android:initialLayout="@layout/widget_semester_timeline"
-  android:previewImage="@drawable/widget_preview_large"
+  android:previewImage="@drawable/widget_preview_semester_timeline_large"
   android:previewLayout="@layout/widget_semester_timeline"
   android:updatePeriodMillis="1800000"
   android:resizeMode="horizontal|vertical"

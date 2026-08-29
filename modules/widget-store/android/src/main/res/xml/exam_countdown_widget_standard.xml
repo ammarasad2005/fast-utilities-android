@@ -5,7 +5,7 @@
   android:targetCellWidth="3"
   android:targetCellHeight="2"
   android:initialLayout="@layout/widget_exam_countdown"
-  android:previewImage="@drawable/widget_preview_standard"
+  android:previewImage="@drawable/widget_preview_exam_countdown_standard"
   android:previewLayout="@layout/widget_exam_countdown"
   android:updatePeriodMillis="1800000"
   android:resizeMode="horizontal|vertical"

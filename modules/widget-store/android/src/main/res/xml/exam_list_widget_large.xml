@@ -5,7 +5,7 @@
   android:targetCellWidth="4"
   android:targetCellHeight="4"
   android:initialLayout="@layout/widget_exam_list"
-  android:previewImage="@drawable/widget_preview_large"
+  android:previewImage="@drawable/widget_preview_exam_list_large"
   android:previewLayout="@layout/widget_exam_list"
   android:updatePeriodMillis="1800000"
   android:resizeMode="horizontal|vertical"
