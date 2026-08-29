@@ -60,6 +60,66 @@ export const deptAccentBg: Record<string, string> = {
   CE: '#F0F9FF',
 };
 
+/**
+ * Dark-theme counterparts for deptAccent/deptAccentBg — the light pastels are
+ * blinding on navy/charcoal surfaces and the mid-dark accents fail contrast on
+ * them. Fills are translucent tints that compose over the dark `raised` surface;
+ * accents are their tailwind-300-ish bright equivalents.
+ */
+export const deptAccentDark: Record<string, string> = {
+  CS: '#93C5FD',
+  AI: '#C4B5FD',
+  DS: '#5EEAD4',
+  CY: '#FCD34D',
+  SE: '#F9A8D4',
+  BBA: '#93C5FD',
+  AF: '#6EE7B7',
+  BA: '#FBBF24',
+  FT: '#C4B5FD',
+  EE: '#FDA4AF',
+  CE: '#7DD3FC',
+};
+
+export const deptAccentBgDark: Record<string, string> = {
+  CS: 'rgba(96,165,250,0.17)',
+  AI: 'rgba(167,139,250,0.17)',
+  DS: 'rgba(45,212,191,0.15)',
+  CY: 'rgba(251,191,36,0.15)',
+  SE: 'rgba(244,114,182,0.15)',
+  BBA: 'rgba(96,165,250,0.17)',
+  AF: 'rgba(52,211,153,0.16)',
+  BA: 'rgba(251,191,36,0.15)',
+  FT: 'rgba(167,139,250,0.17)',
+  EE: 'rgba(251,113,133,0.16)',
+  CE: 'rgba(56,189,248,0.16)',
+};
+
+/**
+ * One-step "shade combo" for a fill sitting on a tinted band (e.g. a course
+ * cell inside the today column): hex pastels are pulled ~10% toward `accent`
+ * => clearly distinct same-family shade; rgba fills get an alpha bump so they
+ * stand out over translucent theme washes. Unknown formats pass through.
+ */
+export function deepenFill(bg: string, accent: string): string {
+  const rgba = bg.match(/^rgba?\(\s*([^)]+)\)$/);
+  if (rgba) {
+    const parts = rgba[1].split(',').map((s) => s.trim());
+    if (parts.length === 4) {
+      const alpha = parseFloat(parts[3]);
+      if (Number.isFinite(alpha)) {
+        return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${Math.min(alpha + 0.08, 0.85).toFixed(2)})`;
+      }
+    }
+    return bg;
+  }
+  const a = bg.replace('#', '');
+  const b = accent.replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(a) || !/^[0-9a-fA-F]{6}$/.test(b)) return bg;
+  const mix = (i: number) =>
+    Math.round(parseInt(a.slice(i, i + 2), 16) * 0.9 + parseInt(b.slice(i, i + 2), 16) * 0.1);
+  return `#${[0, 2, 4].map((i) => mix(i).toString(16).padStart(2, '0')).join('')}`;
+}
+
 /** School brand colours. */
 export const schoolAccent: Record<string, string> = {
   FSC: '#073366',

@@ -83,25 +83,13 @@ export default function TimetableScreen() {
   const [query, setQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [exporting, setExporting] = useState(false);
+  const [electivesOpen, setElectivesOpen] = useState(false);
 
   // ── Saved-preference tag ────────────────────────────────────────────────────
   const [saved, setSaved] = useState<SavedSchedule | null>(null);
-  const [savedBundleName, setSavedBundleName] = useState<string | null>(null);
 
   const reloadSaved = useCallback(async () => {
-    const s = await getSavedSchedule();
-    setSaved(s);
-    if (s?.kind === 'bundle') {
-      try {
-        const raw = await AsyncStorage.getItem('custom:timetable_bundles');
-        const list = raw ? (JSON.parse(raw) as { id: string; name: string }[]) : [];
-        setSavedBundleName(list.find((b) => b.id === s.bundleId)?.name ?? null);
-      } catch {
-        setSavedBundleName(null);
-      }
-    } else {
-      setSavedBundleName(null);
-    }
+    setSaved(await getSavedSchedule());
   }, []);
 
   // ── Class-change alerts (opt-in toggle) ────────────────────────────────────
@@ -380,28 +368,48 @@ export default function TimetableScreen() {
   };
 
   /** Tag the current configuration as "my timetable" — enforcing the single-tag rule. */
+  /**
+   * Tag the current configuration as "my timetable". Always explains what the
+   * preference unlocks BEFORE applying; when another preference (usually the
+   * saved custom timetable) already holds the single slot, the user must
+   * remove it first — offered directly here.
+   */
   const onTagDefault = () => {
     Haptics.selectionAsync().catch(() => {});
+    const applyTag = async () => {
+      await setSavedSchedule({ kind: 'default', school, batch: effBatch, dept: effDept, section: effSection });
+      await reloadSaved();
+    };
     if (saved) {
-      const holder = describeSavedSchedule(saved, savedBundleName ?? undefined);
+      const holder = describeSavedSchedule(saved);
       Alert.alert(
-        'Saved preference already set',
-        `Your saved preference is currently on ${holder}. Remove it there first, then tag this configuration.`,
+        'A preference is already saved',
+        `Your preference is currently ${holder}. A preference must be removed before another can take its place.`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: 'Keep current', style: 'cancel' },
           {
-            text: 'Remove current tag',
-            style: 'destructive',
+            text: 'Remove & use this',
             onPress: async () => {
               await clearSavedSchedule();
-              await reloadSaved();
+              await applyTag();
             },
           },
         ]
       );
       return;
     }
-    setSavedSchedule({ kind: 'default', school, batch: effBatch, dept: effDept, section: effSection }).then(reloadSaved);
+    Alert.alert(
+      'Keep this as your preference?',
+      'This configuration becomes your timetable and will power:\n' +
+        '  •  the next / ongoing class card on Home\n' +
+        '  •  the home-screen widget\n' +
+        '  •  class-change alerts (if enabled)\n' +
+        '  •  opening automatically when you visit Timetable',
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Keep as preference', onPress: () => void applyTag() },
+      ]
+    );
   };
 
   const onRemoveTag = () => {
@@ -474,9 +482,7 @@ export default function TimetableScreen() {
           >
             <Ionicons name="bookmark" size={16} color={colors.brand} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.savedText}>
-                My timetable: bundle “{savedBundleName ?? 'Custom'}”
-              </Text>
+              <Text style={styles.savedText}>My timetable: custom timetable</Text>
               <Text style={styles.savedHint}>Shown in Custom Timetable · tap to open</Text>
             </View>
             <Pressable onPress={onRemoveTag} hitSlop={8}>
@@ -566,6 +572,77 @@ export default function TimetableScreen() {
           ))}
         </View>
 
+        {/* Electives & other courses — picker lives up here where users look
+            for it, not buried under the results. Sections are inline chips in
+            sheet order (same pattern as the Section row), never a dropdown. */}
+        {electiveGroups.length > 0 ? (
+          <View style={styles.electPanel}>
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                setElectivesOpen((v) => !v);
+              }}
+              android_ripple={{ color: colors.border }}
+              style={({ pressed }) => [styles.electHead, pressed && { opacity: 0.85 }]}
+            >
+              <Ionicons name="school-outline" size={17} color={colors.brand} />
+              <Text style={styles.electTitle} numberOfLines={1}>
+                Electives & other courses
+              </Text>
+              <View style={styles.electCountPill}>
+                <Text style={styles.electCountText}>
+                  {pickedElectiveKeys.size > 0
+                    ? `${pickedElectiveKeys.size} picked`
+                    : electiveGroups.length}
+                </Text>
+              </View>
+              <Ionicons
+                name={electivesOpen ? 'chevron-up' : 'chevron-down'}
+                size={17}
+                color={colors.textTertiary}
+              />
+            </Pressable>
+            {electivesOpen ? (
+              <View style={styles.electBody}>
+                <Text style={styles.electHint}>
+                  Pick a course into your schedule — tap its section chip. Picked electives appear
+                  in the weekly schedule below.
+                </Text>
+                {electiveGroups.map((g) => (
+                  <View key={g.key} style={styles.electGroup}>
+                    <View style={styles.electGroupTop}>
+                      <Text style={styles.electGroupName} numberOfLines={1}>
+                        {g.courseName}
+                      </Text>
+                      <View style={[styles.electiveBadge, g.category === 'repeat' ? styles.repeatBadge : styles.electiveBadgeBg]}>
+                        <Text style={[styles.electiveBadgeText, g.category === 'repeat' ? styles.repeatBadgeText : styles.electiveBadgeTextColor]}>
+                          {g.category === 'repeat' ? 'REPEAT' : 'ELECTIVE'}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.electiveSections}>
+                      {g.sections.map((sec) => {
+                        const picked = pickedElectiveKeys.has(`${g.key}|${sec}`);
+                        return (
+                          <Pressable
+                            key={sec}
+                            onPress={() => toggleElective(g.key, sec)}
+                            style={[styles.electiveSectionChip, picked && { backgroundColor: colors.brand, borderColor: colors.brand }]}
+                          >
+                            <Text style={[styles.electiveSectionText, picked && { color: colors.onBrand }]}>
+                              {sec}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         {/* Search */}
         <SectionHeader title="Search" />
         <View style={styles.searchBox}>
@@ -641,43 +718,6 @@ export default function TimetableScreen() {
           <WeekGrid days={gridDays} />
         )}
 
-        {/* Electives / Others */}
-        {electiveGroups.length > 0 ? (
-          <>
-            <SectionHeader title="Electives / Others" />
-            <Text style={styles.electivesHint}>
-              Pick elective or repeat courses into your schedule — choose the section that suits you.
-            </Text>
-            {electiveGroups.map((g) => (
-              <View key={g.key} style={styles.electiveCard}>
-                <View style={styles.electiveTopRow}>
-                  <Text style={styles.electiveName}>{g.courseName}</Text>
-                  <View style={[styles.electiveBadge, g.category === 'repeat' ? styles.repeatBadge : styles.electiveBadgeBg]}>
-                    <Text style={[styles.electiveBadgeText, g.category === 'repeat' ? styles.repeatBadgeText : styles.electiveBadgeTextColor]}>
-                      {g.category === 'repeat' ? 'REPEAT' : 'ELECTIVE'}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.electiveSections}>
-                  {g.sections.map((sec) => {
-                    const picked = pickedElectiveKeys.has(`${g.key}|${sec}`);
-                    return (
-                      <Pressable
-                        key={sec}
-                        onPress={() => toggleElective(g.key, sec)}
-                        style={[styles.electiveSectionChip, picked && { backgroundColor: colors.brand, borderColor: colors.brand }]}
-                      >
-                        <Text style={[styles.electiveSectionText, picked && { color: colors.onBrand }]}>
-                          {sec}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-            ))}
-          </>
-        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -930,16 +970,42 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   pickerOptionText: { fontSize: 15, color: colors.text },
   electivesHint: { fontSize: 13, color: colors.textSecondary, marginTop: -4, marginBottom: 10 },
-  electiveCard: {
+  // ── Electives picker panel (below Section, above Search) ──────────────
+  electPanel: {
+    marginTop: 12,
     backgroundColor: colors.raised,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    padding: 12,
-    marginBottom: 8,
+    overflow: 'hidden',
   },
-  electiveTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  electiveName: { fontSize: 14, fontWeight: '700', color: colors.text, flex: 1 },
+  electHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  electTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text },
+  electCountPill: {
+    backgroundColor: colors.infoBg,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  electCountText: { fontSize: 11, fontWeight: '700', color: colors.brand },
+  electBody: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    gap: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: 12,
+  },
+  electHint: { fontSize: 11.5, color: colors.textSecondary },
+  electGroup: { gap: 8 },
+  electGroupTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  electGroupName: { fontSize: 13, fontWeight: '700', color: colors.text, flex: 1 },
   electiveBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
   electiveBadgeBg: { backgroundColor: colors.infoBg },
   repeatBadge: { backgroundColor: colors.warningBg },

@@ -36,6 +36,10 @@ export interface ThemeColors {
   warningBg: string;
   info: string;
   infoBg: string;
+
+  /** Timetable grid: wash behind the today/tomorrow column (thematic, must
+   *  never collide with a course-cell fill). */
+  gridTodayBg: string;
 }
 
 export interface Theme extends ThemeColors {
@@ -78,6 +82,7 @@ export const THEMES: Theme[] = [
     warningBg: '#FFFBEB',
     info: '#1D4ED8',
     infoBg: '#EFF6FF',
+    gridTodayBg: 'rgba(7,51,102,0.05)',
   },
   {
     id: 'midnight',
@@ -105,6 +110,7 @@ export const THEMES: Theme[] = [
     warningBg: 'rgba(251,191,36,0.14)',
     info: '#60A5FA',
     infoBg: 'rgba(96,165,250,0.14)',
+    gridTodayBg: 'rgba(91,155,255,0.09)',
   },
   {
     id: 'ocean',
@@ -132,6 +138,7 @@ export const THEMES: Theme[] = [
     warningBg: '#FFF8E1',
     info: '#0277BD',
     infoBg: '#E1F5FE',
+    gridTodayBg: 'rgba(3,105,161,0.06)',
   },
   {
     id: 'forest',
@@ -159,6 +166,7 @@ export const THEMES: Theme[] = [
     warningBg: '#FEF3C7',
     info: '#1D4ED8',
     infoBg: '#EFF6FF',
+    gridTodayBg: 'rgba(22,101,52,0.07)',
   },
   {
     id: 'dusk',
@@ -186,6 +194,7 @@ export const THEMES: Theme[] = [
     warningBg: 'rgba(251,191,36,0.15)',
     info: '#93C5FD',
     infoBg: 'rgba(147,197,253,0.15)',
+    gridTodayBg: 'rgba(240,163,94,0.10)',
   },
 ];
 

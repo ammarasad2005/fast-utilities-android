@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { deptAccent, deptAccentBg } from '@/theme/colors';
+import { deepenFill, deptAccent, deptAccentBg, deptAccentBgDark, deptAccentDark } from '@/theme/colors';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { formatISODateShort, parseTimeRange } from '@/core/dates';
 import type { TimetableEntry } from '@/core/types';
@@ -42,7 +42,7 @@ export interface WeekGridDay {
 
 export function WeekGrid({ days }: { days: WeekGridDay[] }) {
   const styles = useStyles(makeStyles);
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -56,7 +56,7 @@ export function WeekGrid({ days }: { days: WeekGridDay[] }) {
               style={[
                 styles.dayHeader,
                 d.badge ? {
-                  backgroundColor: colors.infoBg,
+                  backgroundColor: colors.gridTodayBg,
                   borderTopWidth: 2,
                   borderLeftWidth: 2,
                   borderRightWidth: 2,
@@ -105,7 +105,7 @@ export function WeekGrid({ days }: { days: WeekGridDay[] }) {
                 d.badge ? {
                   // The web's "boundary covering": a visible border framing the
                   // whole today/tomorrow column (header above supplies the top edge)
-                  backgroundColor: colors.infoBg,
+                  backgroundColor: colors.gridTodayBg,
                   borderLeftWidth: 2,
                   borderRightWidth: 2,
                   borderBottomWidth: 2,
@@ -129,8 +129,16 @@ export function WeekGrid({ days }: { days: WeekGridDay[] }) {
                 const top = Math.max(0, (startMin - DAY_START_MIN) * PX_PER_MIN);
                 const height = Math.min(Math.max((endMin - startMin) * PX_PER_MIN - 4, 40), GRID_HEIGHT - top - 4);
                 const deptKey = e.department.split('/')[0];
-                const accent = deptAccent[deptKey] ?? colors.brand;
-                const bg = deptAccentBg[deptKey] ?? colors.subtle;
+                // Theme-aware dept colouring: dark themes need bright accents +
+                // translucent fills; the light pastels look like glare there.
+                const accent = (isDark ? deptAccentDark[deptKey] : deptAccent[deptKey]) ?? colors.brand;
+                const baseBg = isDark
+                  ? (e.type === 'lab' ? colors.successBg : (deptAccentBgDark[deptKey] ?? colors.subtle))
+                  : (e.type === 'lab' ? colors.successBg : (deptAccentBg[deptKey] ?? colors.subtle));
+                // Inside the today/tomorrow band, step the fill one shade
+                // deeper (toward the accent / higher alpha) so cells read as a
+                // deliberate shade combo instead of blending into the column.
+                const bg = d.badge ? deepenFill(baseBg, e.type === 'lab' ? colors.success : accent) : baseBg;
                 const isLab = e.type === 'lab';
                 const cancelled = e.cancelled;
                 return (
@@ -141,7 +149,7 @@ export function WeekGrid({ days }: { days: WeekGridDay[] }) {
                       {
                         top: top + 2,
                         height,
-                        backgroundColor: isLab ? colors.successBg : bg,
+                        backgroundColor: bg,
                         borderLeftColor: accent,
                       },
                       cancelled && { opacity: 0.55 },

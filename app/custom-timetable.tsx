@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -37,7 +36,14 @@ import {
 import { TIMETABLE_META_KEY, type RawTimetableJSON, type SemesterCalendar, type TimetableEntry } from '@/core/types';
 import { getSemesterStartDate } from '@/core/semester';
 import { attachEntries, resolveWeekPlan } from '@/core/weekPlan';
-import { loadBundles, saveBundles, type BundleRow, type CustomBundle } from '@/prefs/bundles';
+import {
+  CUSTOM_TIMETABLE_NAME,
+  loadBundles,
+  migrateBundlesToSingle,
+  saveBundles,
+  type BundleRow,
+  type CustomBundle,
+} from '@/prefs/bundles';
 import { DaySection } from '@/components/DaySection';
 import { Dropdown } from '@/components/Dropdown';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -56,9 +62,7 @@ function makeRow(batch: string, dept = ''): Row {
   return { id: `row-${Date.now()}-${counter++}`, batch, dept, category: 'regular', selection: '' };
 }
 
-function bundleLabel(b: Bundle): string {
-  return `bundle “${b.name}”`;
-}
+
 
 export default function CustomTimetableScreen() {
   const styles = useStyles(makeStyles);
@@ -93,23 +97,21 @@ export default function CustomTimetableScreen() {
   };
 
   // ── Screen state ────────────────────────────────────────────────────────────
-  // 'auto' resolves on focus: tagged bundle → view; first bundle → view; else build.
+  // Single-slot model: at most ONE custom timetable exists at a time.
+  // 'auto' resolves on focus: saved custom timetable → view; else build.
   const [mode, setMode] = useState<'auto' | 'build' | 'view'>('auto');
   const [activeBundleId, setActiveBundleId] = useState<string | null>(null);
   const [editingBundleId, setEditingBundleId] = useState<string | null>(null);
   const [bundles, setBundles] = useState<Bundle[]>([]);
   const [saved, setSaved] = useState<SavedSchedule | null>(null);
-  const [bundlesOpen, setBundlesOpen] = useState(false);
+  // Post-save "keep as your preference?" benefits prompt.
+  const [prefPromptOpen, setPrefPromptOpen] = useState(false);
 
   // Builder state
   const [school, setSchool] = useState<string>('FSC');
   const [rows, setRows] = useState<Row[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [exporting, setExporting] = useState(false);
-
-  // Name prompt (iv)
-  const [nameModalOpen, setNameModalOpen] = useState(false);
-  const [newBundleName, setNewBundleName] = useState('');
 
   // Mirror of `mode` for the focus handler (stays stable across re-focuses).
   const modeRef = useRef(mode);
@@ -121,17 +123,15 @@ export default function CustomTimetableScreen() {
     useCallback(() => {
       let cancelled = false;
       (async () => {
+        // Collapse any legacy multi-bundle state to the single slot first.
+        await migrateBundlesToSingle();
         const list = await loadBundles();
         const spref = await getSavedSchedule();
         if (cancelled) return;
         setBundles(list);
         setSaved(spref);
         if (modeRef.current !== 'auto') return;
-        // Auto-display (vii): the tagged bundle wins; otherwise the most recent
-        // bundle; nothing saved → straight into the builder.
-        const tagged =
-          spref?.kind === 'bundle' ? list.find((b) => b.id === spref.bundleId) ?? null : null;
-        const target = tagged ?? list[0] ?? null;
+        const target = list[0] ?? null;
         if (target) {
           setActiveBundleId(target.id);
           setMode('view');
@@ -258,48 +258,35 @@ export default function CustomTimetableScreen() {
     }
   };
 
-  const startNewBuild = () => {
+  const startFreshBuild = () => {
     setEditingBundleId(null);
     setRows([makeRow(batches[0] ?? '')]);
     setActiveBundleId(null);
     setMode('build');
   };
 
-  /** (iv) — open the name prompt instead of auto-saving with a synthetic name. */
-  const openNamePrompt = () => {
+  /**
+   * Single-slot save: overwrites the one custom timetable (keeping its id so
+   * an existing preference tag stays valid), then offers the preference tag
+   * with a clear description of what it unlocks — unless already tagged.
+   */
+  const saveCustom = () => {
     if (rows.length === 0) return;
-    setNewBundleName(`Timetable ${bundles.length + 1}`);
-    setNameModalOpen(true);
-  };
-
-  const createBundle = () => {
-    const name = newBundleName.trim();
-    if (!name) return;
+    const existing = bundles[0] ?? null;
     const bundle: Bundle = {
-      id: `b-${Date.now()}`,
-      name,
+      id: existing?.id ?? (editingBundleId ?? `b-${Date.now()}`),
+      name: CUSTOM_TIMETABLE_NAME,
       school,
       rows: rows.map((r) => ({ ...r })),
     };
-    persistBundles([bundle, ...bundles]);
+    persistBundles([bundle]);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setNameModalOpen(false);
-    setNewBundleName('');
     setActiveBundleId(bundle.id);
-    setMode('view');
-  };
-
-  const updateBundle = () => {
-    if (!editingBundleId) return;
-    persistBundles(
-      bundles.map((b) =>
-        b.id === editingBundleId ? { ...b, school, rows: rows.map((r) => ({ ...r })) } : b
-      )
-    );
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setActiveBundleId(editingBundleId);
     setEditingBundleId(null);
     setMode('view');
+    if (!(saved?.kind === 'bundle' && saved.bundleId === bundle.id)) {
+      setPrefPromptOpen(true);
+    }
   };
 
   const editBundle = (b: Bundle) => {
@@ -310,43 +297,35 @@ export default function CustomTimetableScreen() {
     setMode('build');
   };
 
-  const viewBundle = (b: Bundle) => {
-    setActiveBundleId(b.id);
-    setEditingBundleId(null);
-    setMode('view');
-  };
-
-  const deleteBundle = async (b: Bundle) => {
-    Alert.alert('Delete bundle?', `“${b.name}” will be removed permanently.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          const next = bundles.filter((x) => x.id !== b.id);
-          persistBundles(next);
-          if (saved?.kind === 'bundle' && saved.bundleId === b.id) {
-            await clearSavedSchedule();
-            setSaved(await getSavedSchedule());
-          }
-          if (activeBundleId === b.id) {
-            const follow = next[0] ?? null;
-            if (follow) {
-              setActiveBundleId(follow.id);
-              setMode('view');
-            } else {
-              setActiveBundleId(null);
-              setRows([makeRow(batches[0] ?? '')]);
-              setMode('build');
+  const deleteCustom = async (b: Bundle) => {
+    Alert.alert(
+      'Delete custom timetable?',
+      'Your saved custom timetable will be removed permanently. You can then build a new one.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            persistBundles([]);
+            if (saved?.kind === 'bundle' && saved.bundleId === b.id) {
+              await clearSavedSchedule();
+              setSaved(await getSavedSchedule());
             }
-          }
+            startFreshBuild();
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
-  // ── Saved-preference tag actions (v) ────────────────────────────────────────
+  // ── Preference tag actions ──────────────────────────────────────────────────
   const isBundleTagged = (id: string) => saved?.kind === 'bundle' && saved.bundleId === id;
+
+  const tagThisCustom = async (b: Bundle) => {
+    await setSavedSchedule({ kind: 'bundle', bundleId: b.id });
+    setSaved(await getSavedSchedule());
+  };
 
   const toggleTag = async (b: Bundle) => {
     Haptics.selectionAsync().catch(() => {});
@@ -356,29 +335,26 @@ export default function CustomTimetableScreen() {
       return;
     }
     if (saved) {
-      const holderName =
-        saved.kind === 'bundle'
-          ? bundles.find((x) => x.id === saved.bundleId)?.name
-          : undefined;
+      // The single-tag rule: something else (usually the default config on
+      // the Timetable tab) already holds it — surface that, offer to move.
+      const holder = describeSavedSchedule(saved);
       Alert.alert(
-        'Saved preference already set',
-        `Your saved preference is currently on ${describeSavedSchedule(saved, holderName)}. Remove it there first, then tag this bundle.`,
+        'A preference is already saved',
+        `Your preference is currently ${holder}. A preference must be removed before another can take its place.`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: 'Keep current', style: 'cancel' },
           {
-            text: 'Remove current tag',
-            style: 'destructive',
+            text: 'Remove & use this',
             onPress: async () => {
               await clearSavedSchedule();
-              setSaved(await getSavedSchedule());
+              await tagThisCustom(b);
             },
           },
         ]
       );
       return;
     }
-    await setSavedSchedule({ kind: 'bundle', bundleId: b.id });
-    setSaved(await getSavedSchedule());
+    await tagThisCustom(b);
   };
 
   // ── Export (ix) — server-rendered PNG, custom layout ────────────────────────
@@ -410,98 +386,54 @@ export default function CustomTimetableScreen() {
     <View style={styles.safe}>
       <ScreenHeader
         title="Custom Timetable"
-        subtitle={mode === 'view' && activeBundle ? bundleLabel(activeBundle) : 'Build a clash-checked schedule'}
+        subtitle={
+          mode === 'view' && activeBundle
+            ? 'Your custom timetable'
+            : 'Build a clash-checked schedule'
+        }
       />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.brand} />}
       >
-        {/* Bundle bar (view mode) */}
+        {/* Custom timetable bar (view mode) — actions for the single slot.
+            Building "new" is only possible after deleting this one. */}
         {mode === 'view' && activeBundle ? (
-          <View style={styles.bundleBar}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.bundleBarName}>{activeBundle.name}</Text>
-              <Text style={styles.bundleBarMeta}>
-                {activeBundle.school} · {activeBundle.rows.length} class{activeBundle.rows.length !== 1 ? 'es' : ''}
-                {isBundleTagged(activeBundle.id) ? ' · My timetable' : ''}
-              </Text>
+          <>
+            <View style={styles.bundleBar}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.bundleBarName}>My custom timetable</Text>
+                <Text style={styles.bundleBarMeta}>
+                  {activeBundle.school} · {activeBundle.rows.length} class{activeBundle.rows.length !== 1 ? 'es' : ''}
+                  {isBundleTagged(activeBundle.id) ? ' · Saved as preference' : ''}
+                </Text>
+              </View>
+              <Pressable onPress={() => toggleTag(activeBundle)} hitSlop={6} style={styles.bundleBarAction}>
+                <Ionicons
+                  name={isBundleTagged(activeBundle.id) ? 'bookmark' : 'bookmark-outline'}
+                  size={18}
+                  color={colors.brand}
+                />
+              </Pressable>
+              <Pressable onPress={() => editBundle(activeBundle)} hitSlop={6} style={styles.bundleBarAction}>
+                <Ionicons name="create-outline" size={18} color={colors.brand} />
+                <Text style={styles.bundleBarActionText}>Edit</Text>
+              </Pressable>
+              <Pressable onPress={() => deleteCustom(activeBundle)} hitSlop={6} style={styles.bundleBarAction}>
+                <Ionicons name="trash-outline" size={18} color={colors.danger} />
+              </Pressable>
             </View>
-            <Pressable onPress={() => toggleTag(activeBundle)} hitSlop={6} style={styles.bundleBarAction}>
-              <Ionicons
-                name={isBundleTagged(activeBundle.id) ? 'bookmark' : 'bookmark-outline'}
-                size={18}
-                color={colors.brand}
-              />
+            <Pressable onPress={() => deleteCustom(activeBundle)} style={styles.deleteLink}>
+              <Text style={styles.deleteLinkText}>Delete this timetable to build a different one</Text>
             </Pressable>
-            <Pressable onPress={() => editBundle(activeBundle)} hitSlop={6} style={styles.bundleBarAction}>
-              <Ionicons name="create-outline" size={18} color={colors.brand} />
-              <Text style={styles.bundleBarActionText}>Edit</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {/* Saved bundles list */}
-        <SectionHeader
-          title="Saved bundles"
-          right={
-            bundles.length > 0 ? (
-              <Text style={styles.linkText} onPress={() => setBundlesOpen((s) => !s)}>
-                {bundlesOpen ? 'Hide' : `View (${bundles.length})`}
-              </Text>
-            ) : undefined
-          }
-        />
-        {bundlesOpen ? (
-          bundles.length === 0 ? (
-            <Text style={styles.noneText}>No saved bundles yet.</Text>
-          ) : (
-            <View style={{ gap: 8 }}>
-              {bundles.map((b) => (
-                <View key={b.id} style={styles.bundleRow}>
-                  <Pressable style={{ flex: 1 }} onPress={() => viewBundle(b)}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      {isBundleTagged(b.id) ? (
-                        <Ionicons name="bookmark" size={14} color={colors.brand} />
-                      ) : null}
-                      <Text style={styles.bundleName}>{b.name}</Text>
-                    </View>
-                    <Text style={styles.bundleMeta}>
-                      {b.school} · {b.rows.length} class{b.rows.length !== 1 ? 'es' : ''}
-                      {isBundleTagged(b.id) ? ' · My timetable' : ''}
-                    </Text>
-                  </Pressable>
-                  <Pressable onPress={() => toggleTag(b)} hitSlop={6} style={styles.iconBtn}>
-                    <Ionicons
-                      name={isBundleTagged(b.id) ? 'bookmark' : 'bookmark-outline'}
-                      size={18}
-                      color={colors.brand}
-                    />
-                  </Pressable>
-                  <Pressable onPress={() => editBundle(b)} hitSlop={6} style={styles.iconBtn}>
-                    <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
-                  </Pressable>
-                  <Pressable onPress={() => deleteBundle(b)} hitSlop={6} style={styles.iconBtn}>
-                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          )
-        ) : null}
-
-        {/* New build entry point (when viewing a bundle) */}
-        {mode === 'view' ? (
-          <Pressable onPress={startNewBuild} style={styles.newBuildBtn}>
-            <Ionicons name="add" size={18} color={colors.brand} />
-            <Text style={styles.newBuildText}>Build a new custom timetable</Text>
-          </Pressable>
+          </>
         ) : null}
 
         {/* ── Builder (rows only visible when building/editing — vii) ── */}
         {mode === 'build' ? (
           <>
-            <SectionHeader title={editingBundleId ? `Editing bundle · ${bundles.find((b) => b.id === editingBundleId)?.name ?? ''}` : 'Add classes'} />
+            <SectionHeader title={editingBundleId ? 'Edit your custom timetable' : 'Add classes'} />
 
             {/* School (ii): timetables are built per school — departments never mix. */}
             <Text style={styles.fieldLabel}>School</Text>
@@ -575,17 +507,12 @@ export default function CustomTimetableScreen() {
             </Pressable>
 
             {rows.length > 0 ? (
-              editingBundleId ? (
-                <Pressable onPress={updateBundle} style={styles.saveBtn}>
-                  <Ionicons name="checkmark-done-outline" size={16} color={colors.textSecondary} />
-                  <Text style={styles.saveBtnText}>Update bundle</Text>
-                </Pressable>
-              ) : (
-                <Pressable onPress={openNamePrompt} style={styles.saveBtn}>
-                  <Ionicons name="bookmark-outline" size={16} color={colors.textSecondary} />
-                  <Text style={styles.saveBtnText}>Save as bundle</Text>
-                </Pressable>
-              )
+              <Pressable onPress={saveCustom} style={styles.primarySave}>
+                <Ionicons name="checkmark" size={18} color={colors.onBrand} />
+                <Text style={styles.primarySaveText}>
+                  {editingBundleId ? 'Save changes' : 'Save'}
+                </Text>
+              </Pressable>
             ) : null}
           </>
         ) : null}
@@ -626,7 +553,7 @@ export default function CustomTimetableScreen() {
           <EmptyState
             icon="calendar-outline"
             title="No classes match"
-            message={mode === 'view' ? 'This bundle has no valid classes against current data.' : 'Select at least one course with a valid section.'}
+            message={mode === 'view' ? 'Your custom timetable no longer matches any classes in the current data.' : 'Select at least one course with a valid section.'}
           />
         ) : viewMode === 'list' ? (
           dayItems.map((s) => (
@@ -652,33 +579,39 @@ export default function CustomTimetableScreen() {
         )}
       </ScrollView>
 
-      {/* (iv) Name-the-bundle prompt */}
-      <Modal visible={nameModalOpen} transparent animationType="fade" onRequestClose={() => setNameModalOpen(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setNameModalOpen(false)}>
+      {/* Post-save: offer to make this the preference (the "tag"), and tell
+          the user exactly what the preference unlocks. */}
+      <Modal
+        visible={prefPromptOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPrefPromptOpen(false)}
+      >
+        <Pressable style={styles.pickerBackdrop} onPress={() => setPrefPromptOpen(false)}>
           <Pressable style={styles.nameSheet} onPress={() => {}}>
             <View style={styles.pickerHandle} />
-            <Text style={styles.nameTitle}>SAVE AS BUNDLE</Text>
-            <Text style={styles.nameHint}>Give this collection of classes a name.</Text>
-            <TextInput
-              style={styles.nameInput}
-              value={newBundleName}
-              onChangeText={setNewBundleName}
-              placeholder="e.g. CS Electives, Morning classes"
-              placeholderTextColor={colors.textTertiary}
-              autoFocus
-              returnKeyType="done"
-              onSubmitEditing={createBundle}
-            />
+            <Text style={styles.nameTitle}>KEEP AS YOUR PREFERENCE?</Text>
+            <Text style={styles.nameHint}>
+              Saved — your custom timetable is kept on this device.{'\n\n'}
+              Keep it as your preference and it will also power:{'\n'}
+              {'  •  '}the next / ongoing class card on Home{'\n'}
+              {'  •  '}the home-screen widget{'\n'}
+              {'  •  '}class-change alerts (if enabled){'\n'}
+              {'  •  '}opening automatically when you visit Timetable
+            </Text>
             <View style={styles.nameActions}>
-              <Pressable onPress={() => setNameModalOpen(false)} style={styles.nameCancel}>
-                <Text style={styles.nameCancelText}>Cancel</Text>
+              <Pressable onPress={() => setPrefPromptOpen(false)} style={styles.nameCancel}>
+                <Text style={styles.nameCancelText}>Not now</Text>
               </Pressable>
               <Pressable
-                onPress={createBundle}
-                disabled={!newBundleName.trim()}
-                style={[styles.nameSave, !newBundleName.trim() && { opacity: 0.4 }]}
+                onPress={() => {
+                  setPrefPromptOpen(false);
+                  const b = bundles[0] ?? null;
+                  if (b) void toggleTag(b);
+                }}
+                style={styles.nameSave}
               >
-                <Text style={styles.nameSaveText}>Save bundle</Text>
+                <Text style={styles.nameSaveText}>Keep as preference</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -747,9 +680,8 @@ function CustomClassRow({ entry, conflict }: { entry: TimetableEntry; conflict: 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
-  linkText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
-  noneText: { color: colors.textTertiary, fontSize: 13, marginBottom: 8 },
-  iconBtn: { padding: 6 },
+  deleteLink: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 2 },
+  deleteLinkText: { fontSize: 11, fontWeight: '600', color: colors.danger },
   bundleBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -766,30 +698,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   bundleBarMeta: { fontSize: 11, color: colors.textSecondary, marginTop: 1 },
   bundleBarAction: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 6 },
   bundleBarActionText: { fontSize: 13, fontWeight: '700', color: colors.brand },
-  bundleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.raised,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    padding: 12,
-  },
-  bundleName: { fontSize: 14, fontWeight: '700', color: colors.text },
-  bundleMeta: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  newBuildBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.brand,
-    borderStyle: 'dashed',
-    marginTop: 4,
-  },
-  newBuildText: { color: colors.brand, fontWeight: '700', fontSize: 14 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
   schoolChip: {
     paddingHorizontal: 14,
@@ -825,15 +733,17 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderStyle: 'dashed',
   },
   addBtnText: { color: colors.brand, fontWeight: '700', fontSize: 15 },
-  saveBtn: {
+  primarySave: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
+    gap: 8,
+    paddingVertical: 14,
     marginTop: 10,
+    borderRadius: 12,
+    backgroundColor: colors.brand,
   },
-  saveBtnText: { color: colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  primarySaveText: { fontSize: 15, fontWeight: '700', color: colors.onBrand },
   viewModeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   resultTools: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   segmented: { flexDirection: 'row', backgroundColor: colors.subtle, borderRadius: 10, padding: 3 },

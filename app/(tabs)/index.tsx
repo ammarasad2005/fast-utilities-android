@@ -54,8 +54,8 @@ type Feature = {
 };
 
 const FEATURES: Feature[] = [
-  { id: 'exams', title: 'Exam Finder', description: 'Every exam date & time for your batch and department.', icon: 'document-text', route: '/(tabs)/exams' },
   { id: 'timetable', title: 'Timetable', description: 'Your full weekly schedule — courses, rooms, timings.', icon: 'calendar', route: '/(tabs)/timetable' },
+  { id: 'exams', title: 'Exam Finder', description: 'Every exam date & time for your batch and department.', icon: 'document-text', route: '/(tabs)/exams' },
   { id: 'rooms', title: 'Free Rooms', description: 'Find empty classrooms and labs for any time slot.', icon: 'location', route: '/(tabs)/rooms' },
   { id: 'faculty', title: 'Faculty Info', description: 'Emails, offices and details for all faculty.', icon: 'people', route: '/faculty' },
   { id: 'semester', title: 'Semester Schedule', description: 'Academic calendar — key dates, sessionals, finals.', icon: 'flag', route: '/semester' },

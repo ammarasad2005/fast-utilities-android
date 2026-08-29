@@ -7,7 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * extends the web app's saved-preferences model):
  *
  *   - a DEFAULT configuration  (school + batch + department + section), or
- *   - ONE of the user's saved custom-timetable bundles.
+ *   - the user's saved custom timetable (single-slot since the bundles UI
+ *     was removed; the stored kind stays 'bundle' for compatibility).
  *
  * To appoint the tag to another configuration, it must first be removed from
  * the current holder — callers are expected to surface that instead of
@@ -52,8 +53,8 @@ export async function clearSavedSchedule(): Promise<void> {
 }
 
 /** Human-readable label for a saved schedule (used in conflicts/alerts). */
-export function describeSavedSchedule(pref: SavedSchedule | null, bundleName?: string): string {
+export function describeSavedSchedule(pref: SavedSchedule | null, _bundleName?: string): string {
   if (!pref) return 'none';
-  if (pref.kind === 'bundle') return `bundle “${bundleName ?? pref.bundleId}”`;
+  if (pref.kind === 'bundle') return 'your custom timetable';
   return `${pref.school} · ${pref.dept} ${pref.batch} · Sec ${pref.section}`;
 }

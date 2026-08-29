@@ -5,7 +5,9 @@ import * as SystemUI from 'expo-system-ui';
 import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider, useTheme } from '@/theme/ThemeContext';
 import { registerBackgroundSyncAsync } from '@/background/sync';
+import { migrateBundlesToSingle } from '@/prefs/bundles';
 import { BrandedSplash } from '@/components/BrandedSplash';
+import { SwipeChain } from '@/navigation/SwipeChain';
 
 // Keep the native splash up until the JS branded splash has painted its
 // first frame — the handoff is invisible because both use the same navy.
@@ -23,23 +25,25 @@ function ThemedChrome({ children, splashDone }: { children: React.ReactNode; spl
   return (
     <>
       {splashDone ? <StatusBar style={isDark ? 'light' : 'dark'} /> : null}
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.bg },
-          animation: 'slide_from_right',
-        }}
-      >
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="faculty" options={{ title: 'Faculty' }} />
-        <Stack.Screen name="semester" options={{ title: 'Semester Schedule' }} />
-        <Stack.Screen name="events" options={{ title: 'Campus Events' }} />
-        <Stack.Screen name="custom-exams" options={{ title: 'Custom Exam Schedule' }} />
-        <Stack.Screen name="custom-timetable" options={{ title: 'Custom Timetable' }} />
-        <Stack.Screen name="about" options={{ title: 'About' }} />
-        <Stack.Screen name="+not-found" />
-        {children}
-      </Stack>
+      <SwipeChain>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.bg },
+            animation: 'slide_from_right',
+          }}
+        >
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="faculty" options={{ title: 'Faculty' }} />
+          <Stack.Screen name="semester" options={{ title: 'Semester Schedule' }} />
+          <Stack.Screen name="events" options={{ title: 'Campus Events' }} />
+          <Stack.Screen name="custom-exams" options={{ title: 'Custom Exam Schedule' }} />
+          <Stack.Screen name="custom-timetable" options={{ title: 'Custom Timetable' }} />
+          <Stack.Screen name="about" options={{ title: 'About' }} />
+          <Stack.Screen name="+not-found" />
+          {children}
+        </Stack>
+      </SwipeChain>
     </>
   );
 }
@@ -51,6 +55,9 @@ export default function RootLayout() {
     // Idempotent — registers the background auto-sync task (WorkManager) so
     // campus data refreshes into AsyncStorage even when the app is closed.
     registerBackgroundSyncAsync();
+    // Idempotent — collapses any legacy multi-bundle storage to the single
+    // custom timetable (deletes extras; keeps the tagged one if present).
+    migrateBundlesToSingle().catch(() => {});
   }, []);
 
   return (
