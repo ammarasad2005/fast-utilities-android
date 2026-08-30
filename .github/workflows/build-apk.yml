@@ -83,29 +83,24 @@ jobs:
           python3 - <<'PYEOF'
           p = 'android/app/build.gradle'
           s = open(p).read()
-          old = """    signingConfigs {
-              debug {
-                  storeFile file('debug.keystore')
-                  storePassword 'android'
-                  keyAlias 'androiddebugkey'
-                  keyPassword 'android'
-              }
-          }"""
-          assert old.endswith("    }")
-          new = old[:-4] + """        release {
-                  storeFile file(System.getenv("FASTUTILITIES_KEYSTORE") ?: "debug.keystore")
-                  storePassword System.getenv("FASTUTILITIES_STORE_PASSWORD") ?: "android"
-                  keyAlias System.getenv("FASTUTILITIES_KEY_ALIAS") ?: "androiddebugkey"
-                  keyPassword System.getenv("FASTUTILITIES_KEY_PASSWORD") ?: "android"
-              }
-          }"""
-          assert old in s, "signingConfigs anchor not found — template changed?"
-          s = s.replace(old, new)
-          anchor = "        release {\n            // Caution!"
-          assert anchor in s, "release buildType anchor not found"
-          s = s.replace(anchor, "        release {\n            signingConfig signingConfigs.release\n            // Caution!")
+          release_block = ('        release {\n'
+              '            storeFile file(System.getenv("FASTUTILITIES_KEYSTORE") ?: "debug.keystore")\n'
+              '            storePassword System.getenv("FASTUTILITIES_STORE_PASSWORD") ?: "android"\n'
+              '            keyAlias System.getenv("FASTUTILITIES_KEY_ALIAS") ?: "androiddebugkey"\n'
+              '            keyPassword System.getenv("FASTUTILITIES_KEY_PASSWORD") ?: "android"\n'
+              '        }\n')
+          close = '        }\n    }\n    buildTypes'
+          assert close in s, 'signingConfigs close anchor missing (template changed?)'
+          s = s.replace(close, '        }\n' + release_block + '    }\n    buildTypes')
+          # NB: the template's release buildType already assigns debug signing
+          # AFTER the comment line — replace THAT assignment (later assignment
+          # would win), don't just insert before it.
+          bt = 'signed-apk-android.\n            signingConfig signingConfigs.debug'
+          assert bt in s, 'release buildType anchor missing (template changed?)'
+          s = s.replace(bt, 'signed-apk-android.\n            signingConfig signingConfigs.release')
           open(p, 'w').write(s)
-          print("signing config injected OK")
+          assert 'signingConfig signingConfigs.release' in s and 'FASTUTILITIES_KEYSTORE' in s
+          print('signing config injected OK')
           PYEOF
 
       - name: Build release APK
