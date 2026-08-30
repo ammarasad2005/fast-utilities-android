@@ -1,6 +1,6 @@
 {
-  "versionCode": 24,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.0.1/app-release.apk",
-  "notes": "Polish: every exam and semester widget now shows its own accurate preview in the launcher widget picker (countdown number, timeline with milestone dots, month calendar, exam list) instead of a generic image, so you can tell exactly what you are adding. No functional changes.",
-  "publishedAt": "2026-08-29"
+  "versionCode": 25,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.1.0/app-release.apk",
+  "notes": "Widgets: trimmed picker (15→9) + category colors per family. REMOVED: Exams Countdown (its countdown is now built into Next Exam), My Exams list, Semester Month, and Timeline 4x4. NEW: Semester Timeline redesigned as a clean journey rail with a glowing today pin (also fixes the black-box rendering bug). Exams widgets are now amber, Semester emerald, Timetable stays blue — so you can tell families apart at a glance in the picker. If a removed widget disappears from your home screen, just re-add its family replacement.",
+  "publishedAt": "2026-08-30"
 }
