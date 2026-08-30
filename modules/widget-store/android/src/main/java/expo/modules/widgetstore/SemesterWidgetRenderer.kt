@@ -334,7 +334,7 @@ object SemesterWidgetRenderer {
       val pillBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x2E6EE7B7 }
       c.drawRoundRect(rect, ph / 2, ph / 2, pillBg)
       val pillEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0x996EE7B7; style = Paint.Style.STROKE; strokeWidth = 2f
+        color = 0x996EE7B7.toInt(); style = Paint.Style.STROKE; strokeWidth = 2f
       }
       c.drawRoundRect(rect, ph / 2, ph / 2, pillEdge)
       c.drawText(pillText, pillCx, pillTop + ph - 9f, pillPaint)
