@@ -1,6 +1,6 @@
 {
-  "versionCode": 25,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.1.0/app-release.apk",
-  "notes": "Widgets: trimmed picker (15→9) + category colors per family. REMOVED: Exams Countdown (its countdown is now built into Next Exam), My Exams list, Semester Month, and Timeline 4x4. NEW: Semester Timeline redesigned as a clean journey rail with a glowing today pin (also fixes the black-box rendering bug). Exams widgets are now amber, Semester emerald, Timetable stays blue — so you can tell families apart at a glance in the picker. If a removed widget disappears from your home screen, just re-add its family replacement.",
+  "versionCode": 26,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.1.1/FAST%20Utilities.apk",
+  "notes": "IMPORTANT: this build switches to the official FAST Utilities release signature. If you installed any earlier build, please UNINSTALL it first, then install this APK fresh — Android will otherwise refuse the update. One-time step; all future updates install normally. No app changes in this release otherwise.",
   "publishedAt": "2026-08-30"
 }
