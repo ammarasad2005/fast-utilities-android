@@ -68,7 +68,52 @@ jobs:
           printf 'org.gradle.workers.max=2\n' >> android/gradle.properties
           sed -i 's/org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m/' android/gradle.properties
 
+      # Release signing: restore the private keystore from Actions secrets and
+      # inject a `release` signingConfig into the PREBUILT build.gradle (prebuild
+      # regenerates that file from the Expo template every run, so the injection
+      # must live here, not in the committed android/). When the env vars are
+      # unset (local builds), the config falls back to the debug keystore.
+      - name: Restore release keystore + inject signing config
+        env:
+          KEYSTORE_B64: ${{ secrets.FASTUTILITIES_KEYSTORE_B64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > /tmp/fastutilities-release.jks
+          test -s /tmp/fastutilities-release.jks || { echo "::error::keystore secret empty — debug fallback would silently ship"; exit 1; }
+          echo "keystore restored: $(wc -c < /tmp/fastutilities-release.jks) bytes"
+          python3 - <<'PYEOF'
+          p = 'android/app/build.gradle'
+          s = open(p).read()
+          old = """    signingConfigs {
+              debug {
+                  storeFile file('debug.keystore')
+                  storePassword 'android'
+                  keyAlias 'androiddebugkey'
+                  keyPassword 'android'
+              }
+          }"""
+          assert old.endswith("    }")
+          new = old[:-4] + """        release {
+                  storeFile file(System.getenv("FASTUTILITIES_KEYSTORE") ?: "debug.keystore")
+                  storePassword System.getenv("FASTUTILITIES_STORE_PASSWORD") ?: "android"
+                  keyAlias System.getenv("FASTUTILITIES_KEY_ALIAS") ?: "androiddebugkey"
+                  keyPassword System.getenv("FASTUTILITIES_KEY_PASSWORD") ?: "android"
+              }
+          }"""
+          assert old in s, "signingConfigs anchor not found — template changed?"
+          s = s.replace(old, new)
+          anchor = "        release {\n            // Caution!"
+          assert anchor in s, "release buildType anchor not found"
+          s = s.replace(anchor, "        release {\n            signingConfig signingConfigs.release\n            // Caution!")
+          open(p, 'w').write(s)
+          print("signing config injected OK")
+          PYEOF
+
       - name: Build release APK
+        env:
+          FASTUTILITIES_KEYSTORE: /tmp/fastutilities-release.jks
+          FASTUTILITIES_STORE_PASSWORD: ${{ secrets.FASTUTILITIES_STORE_PASSWORD }}
+          FASTUTILITIES_KEY_ALIAS: ${{ secrets.FASTUTILITIES_KEY_ALIAS }}
+          FASTUTILITIES_KEY_PASSWORD: ${{ secrets.FASTUTILITIES_KEY_PASSWORD }}
         run: |
           cd android
           ./gradlew assembleRelease --no-daemon --stacktrace
@@ -93,13 +138,17 @@ jobs:
           VER=$(node -p "require('./app.json').expo.version")
           VC=$(node -p "require('./app.json').expo.android.versionCode")
           TAG="v$VER"
+          # Human-friendly asset name (user decision): spaces become %20 in the
+          # download URL; the in-app updater consumes the encoded form.
+          ASSET_NAME="FAST Utilities.apk"
+          ASSET_URL_ENCODED="FAST%20Utilities.apk"
           APK="android/app/build/outputs/apk/release/app-release.apk"
-          cp "$APK" /tmp/app-release.apk
+          cp "$APK" "/tmp/$ASSET_NAME"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" /tmp/app-release.apk --clobber
+            gh release upload "$TAG" "/tmp/$ASSET_NAME" --clobber
           else
-            gh release create "$TAG" /tmp/app-release.apk \
+            gh release create "$TAG" "/tmp/$ASSET_NAME" \
               --title "FAST Utilities $VER" \
               --notes "${RELEASE_NOTES:-Automated build (versionCode $VC).}"
           fi
@@ -108,7 +157,7 @@ jobs:
             const fs = require('fs');
             const out = {
               versionCode: $VC,
-              apkUrl: 'https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/app-release.apk',
+              apkUrl: 'https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$ASSET_URL_ENCODED',
               notes: (process.env.RELEASE_NOTES || '').trim() || 'New FAST Utilities build is available.',
               publishedAt: new Date().toISOString().slice(0, 10),
             };
