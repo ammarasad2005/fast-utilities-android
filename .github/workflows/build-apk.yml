@@ -133,10 +133,10 @@ jobs:
           VER=$(node -p "require('./app.json').expo.version")
           VC=$(node -p "require('./app.json').expo.android.versionCode")
           TAG="v$VER"
-          # Human-friendly asset name (user decision): spaces become %20 in the
-          # download URL; the in-app updater consumes the encoded form.
-          ASSET_NAME="FAST Utilities.apk"
-          ASSET_URL_ENCODED="FAST%20Utilities.apk"
+          # Human-friendly asset name (user decision). NOTE: gh release upload
+          # sanitizes spaces to dots, so the canonical name uses dots outright —
+          # URL-safe with no %-encoding hazards for the updater.
+          ASSET_NAME="FAST.Utilities.apk"
           APK="android/app/build/outputs/apk/release/app-release.apk"
           cp "$APK" "/tmp/$ASSET_NAME"
 
@@ -152,7 +152,7 @@ jobs:
             const fs = require('fs');
             const out = {
               versionCode: $VC,
-              apkUrl: 'https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$ASSET_URL_ENCODED',
+              apkUrl: 'https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$ASSET_NAME',
               notes: (process.env.RELEASE_NOTES || '').trim() || 'New FAST Utilities build is available.',
               publishedAt: new Date().toISOString().slice(0, 10),
             };
