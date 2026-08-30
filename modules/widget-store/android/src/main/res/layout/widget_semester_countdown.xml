@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "Semester · Next milestone" — compact 2x2 + standard 3x2 share this layout. -->
+<!-- "Semester · Next milestone" — compact 2x2 + standard 3x2 share this layout.
+     Emerald category identity (teal glass bg). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
   android:id="@+id/widget_root"
   android:layout_width="match_parent"
   android:layout_height="match_parent"
   android:orientation="vertical"
   android:padding="12dp"
-  android:background="@drawable/widget_bg">
+  android:background="@drawable/widget_bg_semester">
 
   <LinearLayout
     android:layout_width="match_parent"
@@ -21,7 +22,7 @@
       android:textSize="10sp"
       android:textStyle="bold"
       android:letterSpacing="0.12"
-      android:textColor="#FFC24B" />
+      android:textColor="#6EE7B7" />
 
     <LinearLayout
       android:layout_width="0dp"
@@ -53,7 +54,7 @@
     android:text="21"
     android:textSize="30sp"
     android:textStyle="bold"
-    android:textColor="#A9CCFF"
+    android:textColor="#6EE7B7"
     android:maxLines="1" />
 
   <TextView

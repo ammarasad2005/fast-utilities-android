@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "Exams · Next exam" — standard 3x2 + wide 4x2 share this layout. -->
+<!-- "Exams · Next exam" — standard 3x2 + wide 4x2 share this layout.
+     Amber category identity (bronze glass bg); the countdown is an inherent
+     part of this widget, like next-class's coming-when on timetable. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
   android:id="@+id/widget_root"
   android:layout_width="match_parent"
   android:layout_height="match_parent"
   android:orientation="vertical"
   android:padding="12dp"
-  android:background="@drawable/widget_bg">
+  android:background="@drawable/widget_bg_exam">
 
   <LinearLayout
     android:layout_width="match_parent"
@@ -76,7 +78,7 @@
     android:text="in 2d 4h"
     android:textSize="19sp"
     android:textStyle="bold"
-    android:textColor="#A9CCFF" />
+    android:textColor="#FFC24B" />
 
   <ProgressBar
     android:id="@+id/exam_progress"
@@ -86,8 +88,8 @@
     android:layout_marginTop="4dp"
     android:max="100"
     android:progress="42"
-    android:progressTint="#6EE7B7"
-    android:progressBackgroundTint="#33415C" />
+    android:progressTint="#FFC24B"
+    android:progressBackgroundTint="#5C4520" />
 
   <TextView
     android:id="@+id/exam_sub"

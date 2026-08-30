@@ -50,30 +50,7 @@
         android:name="android.appwidget.provider"
         android:resource="@xml/next_class_widget_large" />
     </receiver>
-    <!-- Exam widget family (6 picker entries across 3 widgets). -->
-    <receiver
-      android:name=".ExamCountdownWidgetCompactProvider"
-      android:exported="false"
-      android:label="@string/widget_label_exam_countdown_compact">
-      <intent-filter>
-        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-      </intent-filter>
-      <meta-data
-        android:name="android.appwidget.provider"
-        android:resource="@xml/exam_countdown_widget_compact" />
-    </receiver>
-
-    <receiver
-      android:name=".ExamCountdownWidgetProvider"
-      android:exported="false"
-      android:label="@string/widget_label_exam_countdown_standard">
-      <intent-filter>
-        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-      </intent-filter>
-      <meta-data
-        android:name="android.appwidget.provider"
-        android:resource="@xml/exam_countdown_widget_standard" />
-    </receiver>
+    <!-- Exam widget — 2 picker entries (Next Exam, curated sizes). -->
 
     <receiver
       android:name=".ExamNextWidgetProvider"
@@ -99,31 +76,7 @@
         android:resource="@xml/exam_next_widget_wide" />
     </receiver>
 
-    <receiver
-      android:name=".ExamListWidgetWideProvider"
-      android:exported="false"
-      android:label="@string/widget_label_exam_list_wide">
-      <intent-filter>
-        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-      </intent-filter>
-      <meta-data
-        android:name="android.appwidget.provider"
-        android:resource="@xml/exam_list_widget_wide" />
-    </receiver>
-
-    <receiver
-      android:name=".ExamListWidgetLargeProvider"
-      android:exported="false"
-      android:label="@string/widget_label_exam_list_large">
-      <intent-filter>
-        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-      </intent-filter>
-      <meta-data
-        android:name="android.appwidget.provider"
-        android:resource="@xml/exam_list_widget_large" />
-    </receiver>
-
-    <!-- Semester widget family (5 picker entries across 3 widgets). -->
+    <!-- Semester family — 3 picker entries across 2 widgets. -->
     <receiver
       android:name=".SemesterCountdownWidgetCompactProvider"
       android:exported="false"
@@ -158,30 +111,6 @@
       <meta-data
         android:name="android.appwidget.provider"
         android:resource="@xml/semester_timeline_widget_wide" />
-    </receiver>
-
-    <receiver
-      android:name=".SemesterTimelineWidgetLargeProvider"
-      android:exported="false"
-      android:label="@string/widget_label_semester_timeline_large">
-      <intent-filter>
-        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-      </intent-filter>
-      <meta-data
-        android:name="android.appwidget.provider"
-        android:resource="@xml/semester_timeline_widget_large" />
-    </receiver>
-
-    <receiver
-      android:name=".SemesterMonthWidgetProvider"
-      android:exported="false"
-      android:label="@string/widget_label_semester_month">
-      <intent-filter>
-        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-      </intent-filter>
-      <meta-data
-        android:name="android.appwidget.provider"
-        android:resource="@xml/semester_month_widget" />
     </receiver>
 
     <!-- Refresh-on-unlock: re-render every placed widget the moment the

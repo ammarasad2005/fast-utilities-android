@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exam-family glass surface: deep bronze/amber gradient — the category
+     color for exam widgets (timetable = blue, exams = amber, semester =
+     emerald; user decision: category reflected in widget color since the
+     picker has no folders). ~95% opacity, same glass recipe as widget_bg. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+  <gradient
+    android:angle="315"
+    android:startColor="#F24A3208"
+    android:centerColor="#F22E2006"
+    android:endColor="#F21A1203" />
+  <stroke android:width="1dp" android:color="#30FFC24B" />
+  <corners android:radius="22dp" />
+</shape>

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "Semester · Timeline" — wide 4x2 + large 4x4 share this layout; the
-     milestone line is canvas-drawn into @id/sem_timeline. -->
+<!-- "Semester · Timeline" — wide 4x2 only (4x4 removed in v2.1.0). The
+     journey rail is canvas-drawn (transparent ARGB) into @id/sem_timeline. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
   android:id="@+id/widget_root"
   android:layout_width="match_parent"
   android:layout_height="match_parent"
   android:orientation="vertical"
   android:padding="12dp"
-  android:background="@drawable/widget_bg">
+  android:background="@drawable/widget_bg_semester">
 
   <LinearLayout
     android:layout_width="match_parent"
@@ -22,7 +22,7 @@
       android:textSize="10sp"
       android:textStyle="bold"
       android:letterSpacing="0.12"
-      android:textColor="#FFC24B" />
+      android:textColor="#6EE7B7" />
 
     <TextView
       android:id="@+id/sem_progress_pct"
@@ -32,7 +32,7 @@
       android:text="43%"
       android:textSize="10sp"
       android:textStyle="bold"
-      android:textColor="#A9CCFF" />
+      android:textColor="#6EE7B7" />
 
     <LinearLayout
       android:layout_width="0dp"

@@ -2,11 +2,19 @@
 """
 Generate the per-widget-type launcher picker preview PNGs.
 
-These mirror the widget layouts + navy-glass surface exactly (same palette as
-WidgetRenderer/ExamWidgetRenderer/SemesterWidgetRenderer and widget_bg.xml),
-at the same pixel sizes the original preview set used:
-  compact 330x330 · standard 540x330 · wide 720x330 · large 660x660
+v2.1.0: families are color-coded (user decision — category color reflects in
+the widget since the picker has no folders):
+  timetable = blue glass   (@drawable/widget_bg)          [previews unchanged]
+  exams     = amber/bronze (@drawable/widget_bg_exam)
+  semester  = emerald/teal (@drawable/widget_bg_semester)
 
+Surviving exam/semester previews (the Countdown/My Exams/Month/Timeline-4x4
+widgets were removed): exam_next {standard,wide}, semester_countdown
+{compact,standard}, semester_timeline {wide — journey rail design}.
+
+Pixel sizes (contract): compact 330x330 · standard 540x330 · wide 720x330.
+
+Run from the repo root:  python3 scripts/gen_widget_previews.py
 Output: modules/widget-store/android/src/main/res/drawable-nodpi/
 """
 from PIL import Image, ImageDraw, ImageFont
@@ -16,47 +24,52 @@ OUT = "modules/widget-store/android/src/main/res/drawable-nodpi"
 BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-# ── palette (widget_bg + renderer constants) ────────────────────────────────
-BG_TOP = (20, 50, 96)      # #143260
-BG_BOTTOM = (7, 27, 56)    # #071B38
-EDGE = (255, 255, 255, 56) # ~#38FFFFFF
-AMBER = (255, 194, 75)     # #FFC24B
+# ── palette (renderer constants, themed) ────────────────────────────────────
 WHITE = (255, 255, 255)
-META = (185, 198, 216)     # #B9C6D8
-BRAND = (169, 204, 255)    # #A9CCFF
-EMERALD = (110, 231, 183)  # #6EE7B7
-SUB = (147, 165, 191)      # #93A5BF
-TRACK = (51, 65, 92)       # #33415C
+META = (185, 198, 216)        # #B9C6D8
+SUB = (147, 165, 191)         # #93A5BF
+AMBER = (255, 194, 75)        # #FFC24B   — exam accent
+EMERALD = (110, 231, 183)     # #6EE7B7   — semester accent
+EMERALD_DEEP = (16, 185, 129) # #10B981   — rail gradient start
+SURFACE_T = (11, 46, 38)      # pin centers on teal bg
 
-SIZES = {"compact": (330, 330), "standard": (540, 330), "wide": (720, 330), "large": (660, 660)}
+THEMES = {
+    "exam":     {"top": (74, 50, 8),  "bottom": (26, 18, 3),  "edge": (255, 194, 75, 48), "accent": AMBER},
+    "semester": {"top": (14, 70, 56), "bottom": (4, 31, 25),  "edge": (110, 231, 183, 48), "accent": EMERALD},
+}
+
+SIZES = {"compact": (330, 330), "standard": (540, 330), "wide": (720, 330)}
 
 
 def font(path, size):
     return ImageFont.truetype(path, size)
 
 
-def canvas(size_key, aa=3):
-    """Supersampled rounded navy-gradient card."""
+def text_w(d, s, f):
+    return d.textlength(s, font=f)
+
+
+def canvas(size_key, theme_key, aa=3):
+    """Supersampled rounded themed-glass card (mirrors the bg drawables)."""
+    th = THEMES[theme_key]
     w, h = SIZES[size_key]
     img = Image.new("RGBA", (w * aa, h * aa), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    # vertical navy gradient inside a rounded rect
     grad = Image.new("RGBA", (w * aa, h * aa))
     gd = ImageDraw.Draw(grad)
+    # diagonal 315° look approximated with a vertical ramp + slight horizontal mix
     for y in range(h * aa):
         t = y / (h * aa - 1)
-        r = int(BG_TOP[0] + (BG_BOTTOM[0] - BG_TOP[0]) * t)
-        g = int(BG_TOP[1] + (BG_BOTTOM[1] - BG_TOP[1]) * t)
-        b = int(BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * t)
+        r = int(th["top"][0] + (th["bottom"][0] - th["top"][0]) * t)
+        g = int(th["top"][1] + (th["bottom"][1] - th["top"][1]) * t)
+        b = int(th["top"][2] + (th["bottom"][2] - th["top"][2]) * t)
         gd.line([(0, y), (w * aa, y)], fill=(r, g, b, 242))
     radius = int(22 * 3.2 * aa / 3)
-    # mask
     mask = Image.new("L", (w * aa, h * aa), 0)
     md = ImageDraw.Draw(mask)
     md.rounded_rectangle([0, 0, w * aa - 1, h * aa - 1], radius=radius, fill=255)
     img.paste(grad, (0, 0), mask)
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([0, 0, w * aa - 1, h * aa - 1], radius=radius, outline=EDGE, width=max(2, aa))
+    d.rounded_rectangle([0, 0, w * aa - 1, h * aa - 1], radius=radius, outline=th["edge"], width=max(2, aa))
     return img, d, aa
 
 
@@ -67,71 +80,30 @@ def finish(img, name, aa):
     print(f"  {name}.png {w//aa}x{h//aa}")
 
 
-def header(d, x, y, text, aa):
-    d.text((x, y), text, font=font(BOLD, 11 * aa), fill=AMBER)
+def header(d, x, y, text, aa, accent):
+    d.text((x, y), text, font=font(BOLD, 11 * aa), fill=accent)
 
 
-# ── Exams · Countdown ───────────────────────────────────────────────────────
-def exam_countdown(size_key, name):
-    img, d, aa = canvas(size_key)
-    pad = 24 * aa
-    header(d, pad, pad - 4 * aa, "EXAM COUNTDOWN", aa)
-    w, _ = img.size
-    y = pad + 26 * aa
-    d.text((pad, y + 14 * aa), "12", font=font(BOLD, 56 * aa), fill=BRAND)
-    d.text((pad, y + 76 * aa), "days left", font=font(REG, 11 * aa), fill=META)
-    y2 = y + 102 * aa
-    d.text((pad, y2), "Database Systems", font=font(BOLD, 15 * aa), fill=WHITE)
-    d.text((pad, y2 + 22 * aa), "Mon 12 Jan · 09:00 AM – 11:00 AM", font=font(REG, 10 * aa), fill=SUB)
-    finish(img, name, aa)
-
-
-# ── Exams · Next exam ───────────────────────────────────────────────────────
+# ── Exams · Next exam (amber family) ────────────────────────────────────────
 def exam_next(size_key, name):
-    img, d, aa = canvas(size_key)
+    img, d, aa = canvas(size_key, "exam")
     pad = 24 * aa
-    header(d, pad, pad - 4 * aa, "NEXT EXAM", aa)
+    header(d, pad, pad - 4 * aa, "NEXT EXAM", aa, AMBER)
     y = pad + 26 * aa
     d.text((pad, y), "Database Systems", font=font(BOLD, 17 * aa), fill=WHITE)
     d.text((pad, y + 25 * aa), "CS2001 · Multi-Purpose Hall", font=font(REG, 11 * aa), fill=META)
-    d.text((pad, y + 48 * aa), "in 2d 4h", font=font(BOLD, 26 * aa), fill=BRAND)
+    d.text((pad, y + 48 * aa), "in 2d 4h", font=font(BOLD, 26 * aa), fill=AMBER)
     d.text((pad, y + 92 * aa), "Mon 12 Jan · 09:00 AM – 11:00 AM", font=font(REG, 10 * aa), fill=SUB)
     finish(img, name, aa)
 
 
-# ── Exams · My exams ────────────────────────────────────────────────────────
-def exam_list(size_key, name):
-    img, d, aa = canvas(size_key)
-    pad = 24 * aa
-    header(d, pad, pad - 4 * aa, "MY EXAMS", aa)
-    y = pad + 24 * aa
-    d.text((pad, y), "Next: Database Systems · Mon 12 Jan", font=font(BOLD, 13 * aa), fill=BRAND)
-    rows = [
-        ("Mon 12 Jan · CS2001 — Database Systems", True),
-        ("Wed 14 Jan · MA1002 — Calculus II", False),
-        ("Fri 16 Jan · CS1005 — Discrete Structures", False),
-        ("Mon 19 Jan · EE2003 — Digital Logic Design", False),
-        ("Wed 21 Jan · HU1001 — English Composition", False),
-    ]
-    if size_key == "wide":
-        rows = rows[:3]
-    yy = y + 26 * aa
-    for text, first in rows:
-        d.text((pad, yy), text, font=font(BOLD if first else REG, 11 * aa),
-               fill=WHITE if first else META)
-        yy += 21 * aa
-    if size_key == "large":
-        d.text((pad, yy), "+2 more", font=font(REG, 10 * aa), fill=SUB)
-    finish(img, name, aa)
-
-
-# ── Semester · Next milestone ───────────────────────────────────────────────
+# ── Semester · Next milestone (emerald family) ──────────────────────────────
 def semester_countdown(size_key, name):
-    img, d, aa = canvas(size_key)
+    img, d, aa = canvas(size_key, "semester")
     pad = 24 * aa
-    header(d, pad, pad - 4 * aa, "SEMESTER", aa)
+    header(d, pad, pad - 4 * aa, "SEMESTER", aa, EMERALD)
     y = pad + 26 * aa
-    d.text((pad, y + 14 * aa), "21", font=font(BOLD, 56 * aa), fill=BRAND)
+    d.text((pad, y + 14 * aa), "21", font=font(BOLD, 56 * aa), fill=EMERALD)
     d.text((pad, y + 76 * aa), "days until", font=font(REG, 11 * aa), fill=META)
     y2 = y + 102 * aa
     d.text((pad, y2), "Final Examinations", font=font(BOLD, 15 * aa), fill=WHITE)
@@ -139,107 +111,89 @@ def semester_countdown(size_key, name):
     finish(img, name, aa)
 
 
-# ── Semester · Timeline ─────────────────────────────────────────────────────
+# ── Semester · Timeline — journey rail (emerald family) ─────────────────────
 def semester_timeline(size_key, name):
-    img, d, aa = canvas(size_key)
+    img, d, aa = canvas(size_key, "semester")
+    ov = Image.new("RGBA", img.size, (0, 0, 0, 0))  # translucent strokes live here
+    od = ImageDraw.Draw(ov)
     pad = 24 * aa
-    header(d, pad, pad - 4 * aa, "SEMESTER TIMELINE", aa)
-    d.text((pad + 138 * aa, pad - 4 * aa), "43%", font=font(BOLD, 11 * aa), fill=BRAND)
+    header(d, pad, pad - 4 * aa, "SEMESTER TIMELINE", aa, EMERALD)
+    hw = text_w(d, "SEMESTER TIMELINE", font(BOLD, 11 * aa))
+    d.text((pad + hw + 8 * aa, pad - 4 * aa), "43%", font=font(BOLD, 11 * aa), fill=EMERALD)
 
     w, h = img.size
     margin = 52 * aa
-    mid_y = int(h * 0.55)
+    rail_y = int(h * 0.62)
     track_w = w - 2 * margin
 
-    # track + progress
-    d.line([(margin, mid_y), (w - margin, mid_y)], fill=TRACK, width=8 * aa)
-    prog_x = int(margin + track_w * 0.43)
-    d.line([(margin, mid_y), (prog_x, mid_y)], fill=BRAND, width=8 * aa)
+    # glass track (12% white)
+    od.line([(margin, rail_y), (w - margin, rail_y)], fill=(255, 255, 255, 31), width=10 * aa)
 
-    # milestones: (label, pct, passed?)
-    ms = [("START", 0.0, True), ("S1", 0.30, True), ("S2", 0.62, False), ("FE", 0.86, False), ("END", 1.0, False)]
-    big = size_key == "large"
-    r = 9 * aa if not big else 10 * aa
-    for label, pct, passed in ms:
+    # progress: halo + emerald gradient, to 43%
+    px = int(margin + track_w * 0.43)
+    od.line([(margin, rail_y), (px, rail_y)], fill=(110, 231, 183, 20), width=18 * aa)
+    for x in range(margin, px):
+        t = (x - margin) / max(1, px - margin)
+        r = int(EMERALD_DEEP[0] + (EMERALD[0] - EMERALD_DEEP[0]) * t)
+        g = int(EMERALD_DEEP[1] + (EMERALD[1] - EMERALD_DEEP[1]) * t)
+        b = int(EMERALD_DEEP[2] + (EMERALD[2] - EMERALD_DEEP[2]) * t)
+        od.line([(x, rail_y - 5 * aa), (x, rail_y + 5 * aa)], fill=(r, g, b, 255))
+    od.ellipse([px - 5 * aa, rail_y - 5 * aa, px + 5 * aa, rail_y + 5 * aa], fill=EMERALD + (255,))
+
+    # milestones: (label, pct, state) — lanes alternate above/below like the renderer
+    ms = [("START", 0.0, "passed"), ("S1", 0.30, "passed"), ("S2", 0.62, "next"),
+          ("FE", 0.86, "future"), ("END", 1.0, "future")]
+    f_lbl = font(REG, 9 * aa)
+    f_lbl_b = font(BOLD, 9 * aa)
+    for i, (label, pct, state) in enumerate(ms):
         x = int(margin + track_w * pct)
-        if passed:
-            d.ellipse([x - r, mid_y - r, x + r, mid_y + r], fill=EMERALD)
+        rdot = 9 * aa
+        if state == "passed":
+            od.ellipse([x - rdot, rail_y - rdot, x + rdot, rail_y + rdot], fill=EMERALD + (255,))
+            r2 = 3.5 * aa
+            od.ellipse([x - r2, rail_y - r2, x + r2, rail_y + r2], fill=SURFACE_T + (255,))
         else:
-            d.ellipse([x - r, mid_y - r, x + r, mid_y + r], outline=AMBER, width=3 * aa)
-        lx = x
-        if pct >= 1.0:
-            lx = x - 26 * aa
-        elif pct <= 0.0:
-            lx = x + 6 * aa
-        d.text((lx - 12 * aa, mid_y + r + 8 * aa), label, font=font(REG, 9 * aa), fill=META)
+            od.ellipse([x - rdot, rail_y - rdot, x + rdot, rail_y + rdot], fill=SURFACE_T + (255,))
+            ring = EMERALD if state == "next" else SUB
+            od.ellipse([x - rdot, rail_y - rdot, x + rdot, rail_y + rdot], outline=ring + (255,), width=3 * aa)
+            if state == "next":
+                rr = 14.5 * aa
+                od.ellipse([x - rr, rail_y - rr, x + rr, rail_y + rr], outline=(110, 231, 183, 85), width=2 * aa)
+        f = f_lbl_b if state == "next" else f_lbl
+        col = WHITE if state == "next" else META
+        tw = text_w(d, label, f)
+        lx = min(max(x, 6 * aa + tw / 2), w - 6 * aa - tw / 2)
+        ly = rail_y - 34 * aa if i % 2 == 0 else rail_y + 20 * aa
+        d.text((lx - tw / 2, ly), label, font=f, fill=col)
 
-    # TODAY marker at 43%
-    tr = 13 * aa if not big else 15 * aa
-    d.ellipse([prog_x - tr, mid_y - tr, prog_x + tr, mid_y + tr], fill=WHITE)
-    tr2 = 7 * aa
-    d.ellipse([prog_x - tr2, mid_y - tr2, prog_x + tr2, mid_y + tr2], fill=BRAND)
-    d.text((prog_x - 17 * aa, mid_y - tr - 20 * aa), "TODAY", font=font(BOLD, 8 * aa), fill=WHITE)
+    # TODAY: pill + stem + glowing node
+    pill = "DAY 43"
+    f_pill = font(BOLD, 10 * aa)
+    pw = text_w(d, pill, f_pill) + 22 * aa
+    ph = 24 * aa
+    pcx = min(max(px, margin - 14 * aa + pw / 2), w - margin + 14 * aa - pw / 2)
+    od.rounded_rectangle([pcx - pw / 2, 26 * aa, pcx + pw / 2, 26 * aa + ph],
+                         radius=ph / 2, fill=(110, 231, 183, 46), outline=(110, 231, 183, 153), width=2 * aa)
+    d.text((pcx - text_w(d, pill, f_pill) / 2, 26 * aa + ph / 2 - 5.6 * aa), pill, font=f_pill, fill=EMERALD)
+    od.line([(px, 26 * aa + ph + 2 * aa), (px, rail_y - 12 * aa)], fill=(255, 255, 255, 64), width=2 * aa)
+    for rr, alpha in ((18, 34), (12, 68)):
+        od.ellipse([px - rr * aa, rail_y - rr * aa, px + rr * aa, rail_y + rr * aa],
+                   fill=(255, 255, 255, alpha))
+    od.ellipse([px - 8 * aa, rail_y - 8 * aa, px + 8 * aa, rail_y + 8 * aa], fill=WHITE + (255,))
+    ri = 4.5 * aa
+    od.ellipse([px - ri, rail_y - ri, px + ri, rail_y + ri], fill=EMERALD + (255,))
 
-    d.text((pad, h - 30 * aa), "Day 43 of 112 · Fall 2025", font=font(REG, 11 * aa), fill=META)
-    finish(img, name, aa)
-
-
-# ── Semester · Month ────────────────────────────────────────────────────────
-def semester_month(name):
-    img, d, aa = canvas("large")
-    pad = 24 * aa
-    header(d, pad, pad - 4 * aa, "JANUARY 2026", aa)
-
-    w, h = img.size
-    top = pad + 26 * aa
-    cell_w = (w - 2 * pad) / 7
-    weekdays = ["M", "T", "W", "T", "F", "S", "S"]
-    for i, wd in enumerate(weekdays):
-        cx = pad + cell_w * i + cell_w / 2
-        d.text((cx - 5 * aa, top), wd, font=font(REG, 10 * aa), fill=SUB)
-
-    # Jan 2026: 1st is Thursday → Monday-first column index 3
-    first_col = 3
-    days = 31
-    grid_top = top + 22 * aa
-    rows = 5
-    cell_h = (h - grid_top - 30 * aa) / rows
-    exam_days = {12, 14, 16, 19, 21}
-    today = 15
-
-    for day in range(1, days + 1):
-        idx = first_col + day - 1
-        col = idx % 7
-        row = idx // 7
-        cx = pad + cell_w * col + cell_w / 2
-        cy = grid_top + cell_h * row + cell_h / 2
-        if day == today:
-            r = min(cell_w, cell_h) * 0.34
-            d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=BRAND)
-            num_font = font(BOLD, 10 * aa)
-            d.text((cx - (5.5 if day > 9 else 3.2) * aa, cy - 7.5 * aa), str(day), font=num_font, fill=WHITE)
-        else:
-            d.text((cx - (5.5 if day > 9 else 3.2) * aa, cy - 7.5 * aa), str(day),
-                   font=font(REG, 10 * aa), fill=META)
-        if day in exam_days:
-            dr = 4.5 * aa
-            d.ellipse([cx - dr, cy + cell_h * 0.22, cx + dr, cy + cell_h * 0.22 + 2 * dr], fill=AMBER)
-
-    d.text((pad, h - 28 * aa), "● exam day   ◉ today", font=font(REG, 10 * aa), fill=SUB)
-    finish(img, name, aa)
+    out = Image.alpha_composite(img, ov)
+    d2 = ImageDraw.Draw(out)
+    d2.text((pad, h - 30 * aa), "Day 43 of 112 · Fall 2025", font=font(REG, 11 * aa), fill=META)
+    finish(out, name, aa)
 
 
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
-    exam_countdown("compact", "widget_preview_exam_countdown_compact")
-    exam_countdown("standard", "widget_preview_exam_countdown_standard")
     exam_next("standard", "widget_preview_exam_next_standard")
     exam_next("wide", "widget_preview_exam_next_wide")
-    exam_list("wide", "widget_preview_exam_list_wide")
-    exam_list("large", "widget_preview_exam_list_large")
     semester_countdown("compact", "widget_preview_semester_countdown_compact")
     semester_countdown("standard", "widget_preview_semester_countdown_standard")
     semester_timeline("wide", "widget_preview_semester_timeline_wide")
-    semester_timeline("large", "widget_preview_semester_timeline_large")
-    semester_month("widget_preview_semester_month_large")
-    print("done")
+    print("done — 5 previews (exam amber ×2, semester emerald ×3)")

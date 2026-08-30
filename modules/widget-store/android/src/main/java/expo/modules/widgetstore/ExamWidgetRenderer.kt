@@ -11,18 +11,19 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Renders the exam snapshot ("exam_snapshot") into the three exam widget
- * layouts (countdown / next-exam / list).
+ * Renders the exam snapshot ("exam_snapshot") into the exam widget layout
+ * (Next Exam — the countdown is an inherent part of it, user decision).
  *
  * The snapshot ships a CHRONOLOGICAL list of upcoming personal exams with
  * absolute start/end epochs. Every render derives next-vs-ongoing from
- * `System.currentTimeMillis()` directly, so the widgets roll across midnight
+ * `System.currentTimeMillis()` directly, so the widget rolls across midnight
  * and across exams with zero JS — same self-healing contract as the
  * next-class widget. Stale snapshots (>15 min) kick the JS re-sync the same
  * way (deduped unique work).
  *
- * Layout ids differ per layout; like WidgetRenderer, only ids present in the
- * inflated layout are ever targeted (RemoteViews throws otherwise).
+ * Category identity (user decision): EXAMS = AMBER — bronze/amber glass
+ * background (@drawable/widget_bg_exam) with amber accents, distinct from
+ * timetable (blue) and semester (emerald).
  */
 object ExamWidgetRenderer {
 
@@ -30,13 +31,11 @@ object ExamWidgetRenderer {
   private const val KEY_SNAPSHOT = "exam_snapshot"
   private const val STALE_MS = 15L * 60L * 1000L
 
-  // ── Palette (same navy-glass surface as the class widget) ────────────────
-  private const val C_HEADER_NEXT = 0xFFFFC24B.toInt() // amber
-  private const val C_HEADER_ONGOING = 0xFF6EE7B7.toInt() // emerald
+  // ── Palette (amber identity on the bronze glass surface) ─────────────────
+  private const val C_ACCENT = 0xFFFFC24B.toInt() // amber — category color
+  private const val C_ACCENT_SOFT = 0xFFFFD98A.toInt() // lighter gold (ongoing countdown)
   private const val C_COURSE = 0xFFFFFFFF.toInt()
   private const val C_META = 0xFFB9C6D8.toInt()
-  private const val C_COUNTDOWN_NEXT = 0xFFA9CCFF.toInt()
-  private const val C_COUNTDOWN_ONGOING = 0xFF6EE7B7.toInt()
   private const val C_SUB = 0xFF93A5BF.toInt()
   private const val C_EMPTY_TITLE = 0xFFE8EDF5.toInt()
   private const val C_EMPTY_SUB = 0xFF93A5BF.toInt()
@@ -79,7 +78,7 @@ object ExamWidgetRenderer {
     val snap = raw?.let { runCatching { JSONObject(it) }.getOrNull() }
 
     if (snap == null) {
-      renderEmpty(views, layoutId, "No exam data yet", "Open the app once to start tracking.")
+      renderEmpty(views, "No exam data yet", "Open the app once to start tracking.")
     } else {
       val updatedAt = snap.optLong("updatedAt", 0L)
       if (updatedAt > 0 && System.currentTimeMillis() - updatedAt > STALE_MS) {
@@ -91,21 +90,21 @@ object ExamWidgetRenderer {
           val items = parseItems(snap)
           val cur = items.firstOrNull { it.endMs >= now }
           if (cur == null) {
-            renderEmpty(views, layoutId, "All exams done", "Nothing left this schedule. 🎓")
+            renderEmpty(views, "All exams done", "Nothing left this schedule. 🎓")
           } else {
-            renderOk(views, layoutId, cur, items.dropWhile { it.endMs < now }, now)
+            renderOk(views, cur, now)
           }
         }
         "needsTag" -> renderEmpty(
-          views, layoutId, "Tag your exams",
+          views, "Tag your exams",
           "Exams tab → bookmark a selection, or keep a custom exam schedule as preference."
         )
         "hidden" -> renderEmpty(
-          views, layoutId, "Exams not published",
+          views, "Exams not published",
           "The exam schedule is currently hidden."
         )
         else -> renderEmpty(
-          views, layoutId, "No upcoming exams",
+          views, "No upcoming exams",
           "Nothing upcoming for your tagged exams."
         )
       }
@@ -143,136 +142,51 @@ object ExamWidgetRenderer {
     return out
   }
 
-  // ── Per-layout rendering ─────────────────────────────────────────────────
+  // ── Next Exam rendering ──────────────────────────────────────────────────
 
-  private fun renderOk(views: RemoteViews, layoutId: Int, cur: Item, upcoming: List<Item>, now: Long) {
+  private fun renderOk(views: RemoteViews, cur: Item, now: Long) {
     val ongoing = now >= cur.startMs
-    when (layoutId) {
-      R.layout.widget_exam_countdown -> {
-        views.setTextViewText(R.id.exam_header, if (ongoing) "EXAM IN PROGRESS" else "EXAM COUNTDOWN")
-        views.setTextColor(R.id.exam_header, if (ongoing) C_HEADER_ONGOING else C_HEADER_NEXT)
-        if (ongoing) {
-          views.setTextViewText(R.id.exam_big, "NOW")
-          val leftMin = ((cur.endMs - now) / 60_000L).toInt()
-          views.setTextViewText(
-            R.id.exam_unit,
-            if (leftMin > 1) "${formatDuration(leftMin)} left" else "ends shortly"
-          )
-        } else {
-          val ms = cur.startMs - now
-          if (ms < 24L * 60L * 60L * 1000L) {
-            views.setTextViewText(R.id.exam_big, "TODAY")
-            views.setTextViewText(R.id.exam_unit, "in ${formatDuration((ms / 60_000L).toInt())}")
-          } else {
-            val days = ((ms + 43_200_000L - 1) / 43_200_000L).toInt() // ceil by half-days → whole days
-            views.setTextViewText(R.id.exam_big, days.toString())
-            views.setTextViewText(R.id.exam_unit, if (days == 1) "day left" else "days left")
-          }
-        }
-        views.setTextColor(R.id.exam_big, if (ongoing) C_COUNTDOWN_ONGOING else C_COUNTDOWN_NEXT)
-        views.setTextViewText(R.id.exam_course, cur.course.ifEmpty { cur.code })
-        views.setTextColor(R.id.exam_course, C_COURSE)
-        views.setTextViewText(R.id.exam_when, "${cur.dateLabel} · ${cur.timeLabel}")
-        views.setTextColor(R.id.exam_when, C_SUB)
-      }
-      R.layout.widget_exam_next -> {
-        views.setTextViewText(R.id.exam_header, if (ongoing) "ONGOING EXAM" else "NEXT EXAM")
-        views.setTextColor(R.id.exam_header, if (ongoing) C_HEADER_ONGOING else C_HEADER_NEXT)
-        views.setTextViewText(R.id.exam_course, cur.course.ifEmpty { cur.code })
-        views.setTextColor(R.id.exam_course, C_COURSE)
-        val meta = buildString {
-          append(cur.code)
-          if (cur.room.isNotEmpty() && cur.room != "TBA") append(" · ").append(cur.room)
-        }
-        views.setTextViewText(R.id.exam_meta, meta)
-        views.setTextColor(R.id.exam_meta, C_META)
-        if (ongoing) {
-          val rem = (((cur.endMs - now) / 60_000L).toInt()).coerceAtLeast(0)
-          views.setTextViewText(R.id.exam_countdown, "${formatDuration(rem)} left")
-          views.setTextColor(R.id.exam_countdown, C_COUNTDOWN_ONGOING)
-          val total = (cur.endMs - cur.startMs).coerceAtLeast(1)
-          val pct = (((now - cur.startMs).toFloat() / total) * 100).toInt().coerceIn(0, 100)
-          views.setProgressBar(R.id.exam_progress, 100, pct, false)
-          views.setViewVisibility(R.id.exam_progress, View.VISIBLE)
-        } else {
-          val delta = ((cur.startMs - now) / 60_000L).toInt()
-          views.setTextViewText(
-            R.id.exam_countdown,
-            if (delta <= 0) "starting now" else "in ${formatDuration(delta)}"
-          )
-          views.setTextColor(R.id.exam_countdown, C_COUNTDOWN_NEXT)
-          views.setViewVisibility(R.id.exam_progress, View.GONE)
-        }
-        views.setTextViewText(R.id.exam_sub, "${cur.dateLabel} · ${cur.timeLabel}")
-        views.setTextColor(R.id.exam_sub, C_SUB)
-      }
-      else -> { // widget_exam_list
-        views.setTextViewText(R.id.exam_header, "MY EXAMS")
-        views.setTextColor(R.id.exam_header, C_HEADER_NEXT)
-        views.setTextViewText(
-          R.id.exam_next_line,
-          if (ongoing) "Now: ${cur.course} — in progress" else "Next: ${cur.course} · ${cur.dateLabel}"
-        )
-        views.setTextColor(R.id.exam_next_line, if (ongoing) C_COUNTDOWN_ONGOING else C_COUNTDOWN_NEXT)
-        val rows = intArrayOf(R.id.exam_row1, R.id.exam_row2, R.id.exam_row3, R.id.exam_row4, R.id.exam_row5)
-        for (i in rows.indices) {
-          if (i < upcoming.size) {
-            val it = upcoming[i]
-            views.setTextViewText(rows[i], "${it.dateLabel}  ·  ${it.code} — ${it.course}")
-            views.setTextColor(rows[i], if (i == 0) C_COURSE else C_META)
-            views.setViewVisibility(rows[i], View.VISIBLE)
-          } else {
-            views.setViewVisibility(rows[i], View.GONE)
-          }
-        }
-        val more = maxOf(0, upcoming.size - rows.size)
-        if (more > 0) {
-          views.setTextViewText(R.id.exam_more, "+$more more")
-          views.setTextColor(R.id.exam_more, C_SUB)
-          views.setViewVisibility(R.id.exam_more, View.VISIBLE)
-        } else {
-          views.setViewVisibility(R.id.exam_more, View.GONE)
-        }
-      }
+    views.setTextViewText(R.id.exam_header, if (ongoing) "ONGOING EXAM" else "NEXT EXAM")
+    views.setTextColor(R.id.exam_header, C_ACCENT)
+    views.setTextViewText(R.id.exam_course, cur.course.ifEmpty { cur.code })
+    views.setTextColor(R.id.exam_course, C_COURSE)
+    val meta = buildString {
+      append(cur.code)
+      if (cur.room.isNotEmpty() && cur.room != "TBA") append(" · ").append(cur.room)
     }
+    views.setTextViewText(R.id.exam_meta, meta)
+    views.setTextColor(R.id.exam_meta, C_META)
+    if (ongoing) {
+      val rem = (((cur.endMs - now) / 60_000L).toInt()).coerceAtLeast(0)
+      views.setTextViewText(R.id.exam_countdown, "${formatDuration(rem)} left")
+      views.setTextColor(R.id.exam_countdown, C_ACCENT_SOFT)
+      val total = (cur.endMs - cur.startMs).coerceAtLeast(1)
+      val pct = (((now - cur.startMs).toFloat() / total) * 100).toInt().coerceIn(0, 100)
+      views.setProgressBar(R.id.exam_progress, 100, pct, false)
+      views.setViewVisibility(R.id.exam_progress, View.VISIBLE)
+    } else {
+      val delta = ((cur.startMs - now) / 60_000L).toInt()
+      views.setTextViewText(
+        R.id.exam_countdown,
+        if (delta <= 0) "starting now" else "in ${formatDuration(delta)}"
+      )
+      views.setTextColor(R.id.exam_countdown, C_ACCENT)
+      views.setViewVisibility(R.id.exam_progress, View.GONE)
+    }
+    views.setTextViewText(R.id.exam_sub, "${cur.dateLabel} · ${cur.timeLabel}")
+    views.setTextColor(R.id.exam_sub, C_SUB)
   }
 
-  private fun renderEmpty(views: RemoteViews, layoutId: Int, title: String, subtitle: String) {
-    when (layoutId) {
-      R.layout.widget_exam_countdown -> {
-        views.setTextViewText(R.id.exam_header, "EXAMS")
-        views.setTextColor(R.id.exam_header, C_EMPTY_SUB)
-        views.setTextViewText(R.id.exam_big, "—")
-        views.setTextColor(R.id.exam_big, C_EMPTY_TITLE)
-        views.setTextViewText(R.id.exam_unit, "")
-        views.setTextViewText(R.id.exam_course, title)
-        views.setTextColor(R.id.exam_course, C_EMPTY_TITLE)
-        views.setTextViewText(R.id.exam_when, subtitle)
-        views.setTextColor(R.id.exam_when, C_EMPTY_SUB)
-      }
-      R.layout.widget_exam_next -> {
-        views.setTextViewText(R.id.exam_header, "EXAMS")
-        views.setTextColor(R.id.exam_header, C_EMPTY_SUB)
-        views.setTextViewText(R.id.exam_course, title)
-        views.setTextColor(R.id.exam_course, C_EMPTY_TITLE)
-        views.setTextViewText(R.id.exam_meta, "")
-        views.setTextViewText(R.id.exam_countdown, "")
-        views.setTextViewText(R.id.exam_sub, subtitle)
-        views.setTextColor(R.id.exam_sub, C_EMPTY_SUB)
-        views.setViewVisibility(R.id.exam_progress, View.GONE)
-      }
-      else -> {
-        views.setTextViewText(R.id.exam_header, "MY EXAMS")
-        views.setTextColor(R.id.exam_header, C_EMPTY_SUB)
-        views.setTextViewText(R.id.exam_next_line, title)
-        views.setTextColor(R.id.exam_next_line, C_EMPTY_TITLE)
-        val rows = intArrayOf(R.id.exam_row1, R.id.exam_row2, R.id.exam_row3, R.id.exam_row4, R.id.exam_row5)
-        for (r in rows) views.setViewVisibility(r, View.GONE)
-        views.setTextViewText(R.id.exam_more, subtitle)
-        views.setTextColor(R.id.exam_more, C_EMPTY_SUB)
-        views.setViewVisibility(R.id.exam_more, if (subtitle.isEmpty()) View.GONE else View.VISIBLE)
-      }
-    }
+  private fun renderEmpty(views: RemoteViews, title: String, subtitle: String) {
+    views.setTextViewText(R.id.exam_header, "EXAMS")
+    views.setTextColor(R.id.exam_header, C_EMPTY_SUB)
+    views.setTextViewText(R.id.exam_course, title)
+    views.setTextColor(R.id.exam_course, C_EMPTY_TITLE)
+    views.setTextViewText(R.id.exam_meta, "")
+    views.setTextViewText(R.id.exam_countdown, "")
+    views.setTextViewText(R.id.exam_sub, subtitle)
+    views.setTextColor(R.id.exam_sub, C_EMPTY_SUB)
+    views.setViewVisibility(R.id.exam_progress, View.GONE)
   }
 
   /** "Xm" / "Xh Ym" / "Xd Yh" — same shape as WidgetRenderer's. */

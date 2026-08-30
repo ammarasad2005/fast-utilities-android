@@ -6,15 +6,15 @@ import android.content.Context
 import android.os.Bundle
 
 /**
- * Semester widget family — three widgets, curated sizes:
+ * Semester widget family — two widgets, curated sizes (user trimmed the
+ * family in v2.1.0: Month card removed, Timeline 4x4 removed keeping 4x2,
+ * Timeline redesigned as a journey rail on a transparent canvas):
  *
  *   · "Semester · Next milestone" compact 2x2 + standard 3x2 (one layout)
- *   · "Semester · Timeline"       wide 4x2 + large 4x4       (canvas layout)
- *   · "Semester · Month"          large 4x4                  (canvas layout)
+ *   · "Semester · Timeline"       wide 4x2                   (canvas layout)
  *
- * Timeline and Month render through [SemesterWidgetRenderer]'s software
- * Canvas into an ImageView — RemoteViews alone can't draw a dot timeline or
- * a calendar grid.
+ * Timeline renders through [SemesterWidgetRenderer]'s software Canvas into an
+ * ImageView — RemoteViews alone can't draw the rail/pins composition.
  */
 
 /** "Semester · Next milestone" — compact 2x2 entry. */
@@ -30,16 +30,6 @@ class SemesterCountdownWidgetProvider : BaseSemesterWidgetProvider() {
 /** "Semester · Timeline" — wide 4x2 entry. */
 class SemesterTimelineWidgetWideProvider : BaseSemesterWidgetProvider() {
   override val defaultLayout = R.layout.widget_semester_timeline
-}
-
-/** "Semester · Timeline" — large 4x4 entry. */
-class SemesterTimelineWidgetLargeProvider : BaseSemesterWidgetProvider() {
-  override val defaultLayout = R.layout.widget_semester_timeline
-}
-
-/** "Semester · Month" — large 4x4 entry. */
-class SemesterMonthWidgetProvider : BaseSemesterWidgetProvider() {
-  override val defaultLayout = R.layout.widget_semester_month
 }
 
 abstract class BaseSemesterWidgetProvider : AppWidgetProvider() {
@@ -68,17 +58,12 @@ abstract class BaseSemesterWidgetProvider : AppWidgetProvider() {
       SemesterCountdownWidgetCompactProvider::class.java,
       SemesterCountdownWidgetProvider::class.java,
       SemesterTimelineWidgetWideProvider::class.java,
-      SemesterTimelineWidgetLargeProvider::class.java,
-      SemesterMonthWidgetProvider::class.java,
     )
 
     @JvmStatic
     fun layoutFor(cls: Class<*>): Int = when (cls) {
-      SemesterCountdownWidgetCompactProvider::class.java,
-      SemesterCountdownWidgetProvider::class.java -> R.layout.widget_semester_countdown
-      SemesterTimelineWidgetWideProvider::class.java,
-      SemesterTimelineWidgetLargeProvider::class.java -> R.layout.widget_semester_timeline
-      else -> R.layout.widget_semester_month
+      SemesterTimelineWidgetWideProvider::class.java -> R.layout.widget_semester_timeline
+      else -> R.layout.widget_semester_countdown
     }
   }
 }
