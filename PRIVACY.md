@@ -24,5 +24,4 @@ There are no user accounts, no analytics, no ads, and no tracking of any kind.
 
 ## Contact
 
-Questions or requests: open an issue on the GitHub repository —
-https://github.com/ammarasad2005/fast-utilities-android/issues
+Questions or requests: Contact me at ammarasad321993@gmail.com
