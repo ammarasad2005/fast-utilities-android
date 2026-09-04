@@ -15,6 +15,7 @@ const ITEMS: {
   { id: 'faculty', title: 'Faculty Info', description: 'Emails, offices and details for all faculty members.', icon: 'people', route: '/faculty' },
   { id: 'semester', title: 'Semester Schedule', description: 'Academic calendar — key dates, sessionals and finals.', icon: 'flag', route: '/semester' },
   { id: 'events', title: 'Campus Events', description: 'Seminars, drives and activities in a monthly view.', icon: 'sparkles', route: '/events' },
+  { id: 'feedback', title: 'Send Feedback', description: 'Report a bug, flag wrong data, or suggest something — in two taps.', icon: 'chatbox-ellipses', route: '/feedback' },
   { id: 'about', title: 'About', description: 'App details, data sources and attribution.', icon: 'information-circle', route: '/about' },
 ];
 

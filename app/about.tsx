@@ -2,6 +2,7 @@ import React from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
 import { API_BASE_URL } from '@/api/config';
 import { Card } from '@/components/ui';
@@ -11,6 +12,7 @@ import { UpdateCheckCard } from '@/components/UpdateCheckCard';
 export default function AboutScreen() {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
+  const router = useRouter();
   const version = Constants.expoConfig?.version ?? '1.0.0';
 
   return (
@@ -68,6 +70,12 @@ export default function AboutScreen() {
             title="App source"
             subtitle="github.com/ammarasad2005/fast-utilities-android"
             onPress={() => Linking.openURL('https://github.com/ammarasad2005/fast-utilities-android')}
+          />
+          <LinkRow
+            icon="chatbox-ellipses-outline"
+            title="Send feedback"
+            subtitle="Bug reports, wrong data, ideas — straight to the developer"
+            onPress={() => router.push('/feedback')}
           />
         </View>
 
