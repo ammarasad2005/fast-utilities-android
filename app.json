@@ -62,7 +62,8 @@
             "enableShrinkResourcesInReleaseBuilds": true
           }
         }
-      ]
+      ],
+      "./plugins/withGoogleServices"
     ],
     "experiments": {
       "typedRoutes": false
