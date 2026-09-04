@@ -59,13 +59,42 @@ interface DayMeta {
  * the regular (non-makeup) resolution — makeup weeks are rare and makeup
  * entries keep working through the makeup-only fallback.
  */
+/**
+ * day-key → meta. Port of the web ticker's `sheetToMeta` (DesktopTicker):
+ * an entry's `day` is the RAW sheet key from the JSON — a plain weekday name
+ * for regular sheets, or a full dated name like "Saturday (Sep. 05, 2026)"
+ * for makeup sheets. Both must resolve: an exact sheetName hit wins (it
+ * carries the makeup isoDate, so dated-makeup classes land THIS Saturday);
+ * a plain weekday key falls back to the regular (undated) sheet for that
+ * weekday — including when a makeup sheet displaced it to next week (the web
+ * resolves the undated sheet to the +7 date identically).
+ *
+ * Failure mode this prevents: a Saturday makeup sheet ("Saturday (Sep. 05,
+ * 2026)", 250+ entries) coexisting with a regular standing "Saturday" sheet.
+ * The old code keyed only by canonical weekday, so makeup-keyed classes
+ * never matched any WEEKDAY_INDEX/sheet and silently vanished from the live
+ * engine — the website showed them, the app and widgets did not.
+ */
 function buildDayMeta(plan: WeekPlan): Map<string, DayMeta> {
   const map = new Map<string, DayMeta>();
-  for (const s of [...plan.sheets, ...plan.upcomingMakeupDays]) {
-    const meta: DayMeta = { isoDate: s.isoDate, isMakeup: s.isMakeup };
-    const existing = map.get(s.day);
-    if (!existing || (existing.isMakeup && !s.isMakeup)) map.set(s.day, meta);
+  const sheets = [...plan.sheets, ...plan.upcomingMakeupDays];
+
+  // Pass 1: exact sheet-name keys (covers dated makeup names verbatim).
+  for (const s of sheets) {
+    map.set(s.sheetName, { isoDate: s.isoDate, isMakeup: s.isMakeup });
   }
+
+  // Pass 2: canonical weekday fallback for entries keyed by plain day name.
+  // The undated sheet for a weekday claims its own name (sheetName === day);
+  // a dated sheet must never claim the plain weekday key (its dated name is
+  // already registered above).
+  for (const s of sheets) {
+    const existing = map.get(s.day);
+    if (!existing || s.sheetName === s.day) {
+      map.set(s.day, { isoDate: s.isoDate, isMakeup: s.isMakeup });
+    }
+  }
+
   return map;
 }
 
