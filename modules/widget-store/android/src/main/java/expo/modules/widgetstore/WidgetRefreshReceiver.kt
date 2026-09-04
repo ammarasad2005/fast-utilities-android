@@ -8,6 +8,7 @@ import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import expo.modules.backgroundtask.BackgroundTaskWork
 
@@ -71,6 +72,13 @@ class WidgetRefreshReceiver : BroadcastReceiver() {
         val request = OneTimeWorkRequestBuilder<BackgroundTaskWork>()
           .setInputData(data)
           .setConstraints(constraints)
+          // Expedited: a manual tap is a foreground intent from the user's
+          // perspective — without this, battery-heavy OEMs (Xiaomi/Oppo/Vivo,
+          // Samsung deep-sleep) can defer the JS sync for tens of minutes, so
+          // the widget looks "stale despite refresh" on exactly those devices.
+          // If the daily expedited quota is exhausted, it silently degrades to
+          // the previous plain one-off behavior (never crashes, never drops).
+          .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
           .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
           UNIQUE_WORK,
