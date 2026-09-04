@@ -5,6 +5,7 @@ import * as SystemUI from 'expo-system-ui';
 import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider, useTheme } from '@/theme/ThemeContext';
 import { registerBackgroundSyncAsync } from '@/background/sync';
+import { initServerPushSync } from '@/notifications/push';
 import { migrateBundlesToSingle } from '@/prefs/bundles';
 import { BrandedSplash } from '@/components/BrandedSplash';
 import { SwipeChain } from '@/navigation/SwipeChain';
@@ -40,6 +41,7 @@ function ThemedChrome({ children, splashDone }: { children: React.ReactNode; spl
           <Stack.Screen name="custom-exams" options={{ title: 'Custom Exam Schedule' }} />
           <Stack.Screen name="custom-timetable" options={{ title: 'Custom Timetable' }} />
           <Stack.Screen name="about" options={{ title: 'About' }} />
+          <Stack.Screen name="feedback" options={{ title: 'Send Feedback' }} />
           <Stack.Screen name="+not-found" />
           {children}
         </Stack>
@@ -55,6 +57,9 @@ export default function RootLayout() {
     // Idempotent — registers the background auto-sync task (WorkManager) so
     // campus data refreshes into AsyncStorage even when the app is closed.
     registerBackgroundSyncAsync();
+    // Fire-and-forget — subscribe to the server-side change ping (FCM topic);
+    // no-op until google-services.json is present in the build.
+    initServerPushSync();
     // Idempotent — collapses any legacy multi-bundle storage to the single
     // custom timetable (deletes extras; keeps the tagged one if present).
     migrateBundlesToSingle().catch(() => {});

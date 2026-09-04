@@ -137,5 +137,14 @@
         android:name="android.support.FILE_PROVIDER_PATHS"
         android:resource="@xml/app_updater_paths" />
     </provider>
+  
+    <!-- Server push (FCM data-only pings when campus data changes). -->
+    <service
+      android:name=".PushMessagingService"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+      </intent-filter>
+    </service>
   </application>
 </manifest>

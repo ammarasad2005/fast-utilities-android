@@ -39,3 +39,33 @@ export type {
   SemesterWidgetSnapshot,
   SemesterWidgetMilestone,
 };
+
+declare class PushSetupModule extends NativeModule {
+  ensureSetup(): boolean;
+}
+
+let pushCached: PushSetupModule | null | undefined;
+
+/**
+ * Native push bootstrap (FCM topic subscription). Absent in Expo Go/tests,
+ * and a no-op in builds without google-services.json — always safe to call.
+ */
+export function getPushSetup(): PushSetupModule | null {
+  if (pushCached === undefined) {
+    try {
+      pushCached = requireNativeModule<PushSetupModule>('PushSetup');
+    } catch {
+      pushCached = null;
+    }
+  }
+  return pushCached;
+}
+
+/** Fire-and-forget: subscribe the device to the campus-updates FCM topic. */
+export function ensurePushSetup(): void {
+  try {
+    getPushSetup()?.ensureSetup();
+  } catch {
+    // never blocks app start
+  }
+}

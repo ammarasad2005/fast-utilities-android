@@ -1,6 +1,13 @@
 {
-  "platforms": ["android"],
+  "platforms": [
+    "android"
+  ],
   "android": {
-    "modules": ["expo.modules.widgetstore.WidgetStoreModule", "expo.modules.widgetstore.AppUpdaterModule", "expo.modules.widgetstore.NotifierModule"]
+    "modules": [
+      "expo.modules.widgetstore.WidgetStoreModule",
+      "expo.modules.widgetstore.AppUpdaterModule",
+      "expo.modules.widgetstore.NotifierModule",
+      "expo.modules.widgetstore.PushSetupModule"
+    ]
   }
 }

@@ -16,6 +16,10 @@ dependencies {
   // expo-background-task version in package.json (currently ~57.0.12).
   implementation "host.exp.exponent:expo.modules.backgroundtask:57.0.12"
   implementation "androidx.core:core:1.15.0"
+  // Server push: FCM data-only receive + topic subscription. KTX is folded
+  // into the main artifact since BoM 33.x.
+  implementation platform("com.google.firebase:firebase-bom:34.5.0")
+  implementation "com.google.firebase:firebase-messaging"
 }
 
 android {

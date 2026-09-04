@@ -50,3 +50,6 @@ coverage/
 
 # EAS local
 .easignore
+
+# Firebase config (drop real file here locally; keep out of the public repo)
+android/app/google-services.json
