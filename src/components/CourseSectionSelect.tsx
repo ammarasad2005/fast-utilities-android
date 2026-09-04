@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import {
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,14 +25,18 @@ const TRACK_GAP = 4;
 /**
  * Course+section picker for the custom-timetable builder.
  *
- * The sheet is one single scroll surface (handle aside): title, course rows
- * AND the gaps between them all belong to the same ScrollView, so a drag ANY-
- * WHERE in the panel scrolls — no "scrollable area" hunting.
+ * The sheet is one single scroll surface: title, course rows AND the gaps
+ * between them all belong to the same ScrollView, so a drag ANYWHERE in the
+ * panel scrolls — no "scrollable area" hunting. The overlay is SPLIT (dim
+ * Pressable and sheet are siblings, not nested), so nothing ever claims the
+ * touch responder above the ScrollView — the old pattern that made drags
+ * dead over most of the panel.
  *
- * The scrollbar is custom: a slim directional rail (▲ / thumb / ▼) on the
- * right edge. The chevrons double as page-steppers (tap to move a viewport),
- * and dim when there is nothing further in that direction. The stock system
- * indicator is hidden — it gets covered by chips rows and reads badly.
+ * The scrollbar is a slim directional rail (▲ / thumb / ▼) on the right
+ * edge; the chevrons page a viewport per tap and dim at the ends. The thumb
+ * is DRAGGABLE — grab it like a wheel and it scrubs the list directly, the
+ * fallback for users whose swipes don't register. The stock system
+ * indicator stays hidden; it gets covered by chip rows and reads badly.
  */
 export function CourseSectionSelect({
   value,
@@ -56,6 +61,8 @@ export function CourseSectionSelect({
   const [viewH, setViewH] = useState(0);
   const [contentH, setContentH] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
+  const offsetRef = useRef(0); // live mirror for the pan responder
+  offsetRef.current = offsetY;
 
   const sheetMaxH = Math.min(windowH * 0.66, 460);
   const canScroll = contentH > viewH + 8;
@@ -70,6 +77,28 @@ export function CourseSectionSelect({
     const target = Math.min(Math.max(0, offsetY + span), Math.max(0, contentH - viewH));
     scrollRef.current?.scrollTo({ y: target, animated: true });
   };
+
+  // ── Draggable scroll thumb ("the wheel") ─────────────────────────────────
+  // 1px of thumb travel = 1px of track travel; converting through the track
+  // maps it to content offset:  offset = thumbTravel * (contentH / trackH).
+  // Delta from grab point, so there's no jump when the grab isn't centered.
+  const thumbDragStart = useRef(0);
+  const thumbPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 2,
+      onPanResponderGrant: () => {
+        thumbDragStart.current = offsetRef.current;
+      },
+      onPanResponderMove: (_e, g) => {
+        const trackPxMax = Math.max(1, trackH - thumb.height);
+        const contentMax = Math.max(0, contentH - viewH);
+        const ratio = contentMax / trackPxMax;
+        const target = Math.min(Math.max(0, thumbDragStart.current + g.dy * ratio), contentMax);
+        scrollRef.current?.scrollTo({ y: target, animated: false });
+      },
+    })
+  ).current;
 
   const display = value ? value.replace(' | ', ' · Sec ') : null;
 
@@ -89,17 +118,18 @@ export function CourseSectionSelect({
       </Pressable>
 
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          {/* Claims taps so they don't bubble to the dismiss-backdrop, but
-              YIELDS to drags (empty-onPress Pressable ate chip-start drags). */}
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+        {/* Siblings, not nested: the dim layer dismisses; the sheet is inert
+            so its children (ScrollView, chips, rail) own all gestures. */}
+        <View style={styles.overlayRoot}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
+          <View style={styles.sheet}>
             <View style={styles.handle} />
             <View style={styles.bodyRow}>
               <ScrollView
                 ref={scrollRef}
                 style={{ flex: 1, maxHeight: sheetMaxH }}
                 showsVerticalScrollIndicator={false}
-                scrollEventThrottle={32}
+                scrollEventThrottle={16}
                 onLayout={(e) => setViewH(e.nativeEvent.layout.height)}
                 onContentSizeChange={(_w, h) => setContentH(h)}
                 onScroll={(e) => setOffsetY(e.nativeEvent.contentOffset.y)}
@@ -139,7 +169,7 @@ export function CourseSectionSelect({
                 ))}
               </ScrollView>
 
-              {/* Directional scrollbar rail: ▲ / thumb / ▼ */}
+              {/* Directional scrollbar rail: ▲ / draggable thumb / ▼ */}
               {canScroll ? (
                 <View style={[styles.rail, { height: viewH || undefined }]}>
                   <Pressable
@@ -156,12 +186,30 @@ export function CourseSectionSelect({
                     />
                   </Pressable>
                   <View style={[styles.railTrack, { height: trackH }]}>
+                    {/* invisible wide grab strip around the slim thumb */}
                     <View
-                      style={[
-                        styles.railThumb,
-                        { height: thumb.height, top: thumb.top, backgroundColor: colors.brand },
-                      ]}
-                    />
+                      {...thumbPan.panHandlers}
+                      style={[styles.railThumbHit, {
+                        height: Math.max(28, thumb.height),
+                        top: Math.max(0, thumb.top - (Math.max(28, thumb.height) - thumb.height) / 2),
+                      }]}
+                      accessibilityLabel="Drag to scroll"
+                    >
+                      <View
+                        style={[
+                          styles.railThumb,
+                          { height: thumb.height, backgroundColor: colors.brand },
+                        ]}
+                      >
+                        {thumb.height >= 26 ? (
+                          <View style={styles.railThumbGrip}>
+                            <View style={styles.railThumbGroove} />
+                            <View style={styles.railThumbGroove} />
+                            <View style={styles.railThumbGroove} />
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
                   </View>
                   <Pressable
                     onPress={() => pageBy(1)}
@@ -180,7 +228,7 @@ export function CourseSectionSelect({
               ) : null}
             </View>
           </View>
-        </Pressable>
+        </View>
       </Modal>
     </>
   );
@@ -201,7 +249,7 @@ const makeStyles = (colors: ThemeColors) =>
       paddingVertical: 13,
     },
     fieldText: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '600' },
-    backdrop: {
+    overlayRoot: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.4)',
       justifyContent: 'flex-end',
@@ -271,9 +319,25 @@ const makeStyles = (colors: ThemeColors) =>
       position: 'relative',
     },
     railThumb: {
+      // visual grip: slightly wider than the track so it reads as a wheel
+      width: 8,
+      borderRadius: 4,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    railThumbHit: {
+      // invisible widened touch target (~31pt) around the slim visual thumb
       position: 'absolute',
-      left: 0,
-      right: 0,
-      borderRadius: 3,
+      left: -13,
+      right: -13,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    railThumbGrip: { gap: 3, alignItems: 'center' },
+    railThumbGroove: {
+      width: 4,
+      height: 1.5,
+      borderRadius: 1,
+      backgroundColor: 'rgba(255,255,255,0.55)',
     },
   });
