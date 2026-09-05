@@ -1,6 +1,6 @@
 {
   "versionCode": 26,
   "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.1.1/FAST.Utilities.apk",
-  "notes": "IMPORTANT: this build switches to the official FAST Utilities release signature. If you installed any earlier build, please UNINSTALL it first, then install this APK fresh - Android will otherwise refuse the update. One-time step; all future updates install normally. No app changes in this release otherwise.",
-  "publishedAt": "2026-08-30"
+  "notes": "New FAST Utilities build is available.",
+  "publishedAt": "2026-09-05"
 }
