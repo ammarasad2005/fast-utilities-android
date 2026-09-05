@@ -68,6 +68,23 @@ jobs:
           printf 'org.gradle.workers.max=2\n' >> android/gradle.properties
           sed -i 's/org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m/' android/gradle.properties
 
+      # FCM: write google-services.json from the repo secret AFTER prebuild
+      # (prebuild regenerates /android from scratch — the file must land in
+      # the fresh tree). The config plugin + gradle apply fire only when the
+      # file exists, so without the secret set, the workflow pauses here with
+      # a clear note instead of a cryptic failure.
+      - name: Inject google-services.json (FCM)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "::warning::GOOGLE_SERVICES_JSON repo secret is not set — APK will build WITHOUT FCM (local-15min-sync only). Add the secret and rebuild for push."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          echo "google-services.json written ($(wc -c < android/app/google-services.json) bytes)"
+          python3 -c "import json; json.load(open('android/app/google-services.json')); print('json parses ✓, package:', json.load(open('android/app/google-services.json'))['client'][0]['client_info']['android_client_info']['package_name'])"
+
       # Release signing: restore the private keystore from Actions secrets and
       # inject a `release` signingConfig into the PREBUILT build.gradle (prebuild
       # regenerates that file from the Expo template every run, so the injection
