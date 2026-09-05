@@ -1,4 +1,12 @@
-# FAST Utilities — push-notification scheduler (Firebase Cloud Functions)
+# FAST Utilities — push-notification scheduler
+
+> **Status: SUPERSEDED (kept as the Blaze-plan upgrade path).** The live
+> sender now runs on GitHub Actions in the web repo (`ammarasad2005/
+> FAST-Utilities` — see `PUSH-SETUP.md` and `scripts/push/` there): instant
+> fan-out from the timetable update workflows plus a `*/20` sweep — $0, no
+> billing account needed. The Cloud Function below is the equivalent
+> implementation to be deployed ONLY if a billing-backed Blaze project ever
+> exists; it is not currently deployed.
 
 Replaces the app's open-only local notification checks with **server-driven pings**:
 
