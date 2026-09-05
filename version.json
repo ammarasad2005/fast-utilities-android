@@ -1,6 +1,6 @@
 {
-  "versionCode": 26,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.1.1/FAST.Utilities.apk",
-  "notes": "New FAST Utilities build is available.",
+  "versionCode": 27,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.2.0/FAST.Utilities.apk",
+  "notes": "What's new in 2.2.0:\n• Saturday and makeup-day classes now correctly appear in the Home card and all widgets (dated-sheet engine fix)\n• Server-side push notifications: timetable/exam/event changes land in minutes, even with the app fully closed\n• Manual widget refresh is now instant even on battery-restricted phones\n• New Send Feedback screen (More tab → Send Feedback, and About)\n• Custom timetable course picker: smooth full-panel scrolling plus an always-visible draggable scroll wheel",
   "publishedAt": "2026-09-05"
 }
