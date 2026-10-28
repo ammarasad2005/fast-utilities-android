@@ -1,6 +1,6 @@
 {
-  "versionCode": 27,
-  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.2.0/FAST.Utilities.apk",
-  "notes": "What's new in 2.2.0:\n• Saturday and makeup-day classes now correctly appear in the Home card and all widgets (dated-sheet engine fix)\n• Server-side push notifications: timetable/exam/event changes land in minutes, even with the app fully closed\n• Manual widget refresh is now instant even on battery-restricted phones\n• New Send Feedback screen (More tab → Send Feedback, and About)\n• Custom timetable course picker: smooth full-panel scrolling plus an always-visible draggable scroll wheel",
-  "publishedAt": "2026-09-05"
+  "versionCode": 28,
+  "apkUrl": "https://github.com/ammarasad2005/fast-utilities-android/releases/download/v2.3.0/FAST.Utilities.apk",
+  "notes": "Exam weeks: class widget & home card hold (Exams ongoing. / Stay tuned for update) until YOUR last exam ends, then preview the first classes after the window | Widgets: new exam-hold state that lifts itself exactly when your exams are done — no app open needed | More → Fix delayed notifications: one-tap battery exemption so campus updates arrive on time on Samsung/Xiaomi-class devices | Under the hood: exam-window engine with dual calendar/schedule signals",
+  "publishedAt": "2026-10-28"
 }
