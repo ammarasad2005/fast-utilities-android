@@ -44,7 +44,7 @@ import { getSavedSchedule, type SavedSchedule } from '@/prefs/savedSchedule';
 import { loadBundles, type CustomBundle } from '@/prefs/bundles';
 import { buildPhaseSnapshot, publishNextClassWidget } from '@/widgets/nextClassWidget';
 import { loadExamPhase } from '@/widgets/examPhase';
-import type { ExamPhase } from '@/core/examWindow';
+import { filterExamWindowSheets, type ExamPhase } from '@/core/examWindow';
 import { UpdateBanner } from '@/components/UpdateBanner';
 import { checkForUpdateNow, dismissUpdate, type RemoteVersion } from '@/updates/checkUpdate';
 import { syncExamWidgetsFromCache } from '@/widgets/examWidgets';
@@ -129,7 +129,7 @@ export default function HomeScreen() {
   // tracking ("Exams ongoing." / "Stay tuned for update"), 'resume' previews
   // the first classes after the window. Cache-only, recomputed minutely; the
   // midnight and "last exam ended" flips land within a minute (deduped).
-  const [examPhase, setExamPhase] = useState<ExamPhase>({ kind: 'classes' });
+  const [examPhase, setExamPhase] = useState<ExamPhase>({ kind: 'classes', exclude: [] });
   useEffect(() => {
     let active = true;
     const run = () => {
@@ -271,14 +271,18 @@ export default function HomeScreen() {
     [examPhase]
   );
   const displayPlan = useMemo(() => {
-    if (resumeProbe && liveRaw) {
-      return resolveWeekPlan(liveRaw[TIMETABLE_META_KEY]?.days, {
-        semesterStartISO: getSemesterStartDate(calendar ?? null),
-        now: resumeProbe,
-      });
-    }
-    return livePlan;
-  }, [resumeProbe, liveRaw, calendar, livePlan]);
+    const base =
+      resumeProbe && liveRaw
+        ? resolveWeekPlan(liveRaw[TIMETABLE_META_KEY]?.days, {
+            semesterStartISO: getSemesterStartDate(calendar ?? null),
+            now: resumeProbe,
+          })
+        : livePlan;
+    // Exam-window mask: any sheet dated inside a current/upcoming window never
+    // surfaces — the pre-window evening peek would otherwise show the phantom
+    // classes of the first exam day.
+    return filterExamWindowSheets(base, examPhase.exclude) ?? base;
+  }, [resumeProbe, liveRaw, calendar, livePlan, examPhase]);
   const displayStatus = useMemo(
     () => (resumeProbe && displayPlan ? computeClassStatus(myEntries, displayPlan, resumeProbe) : classStatus),
     [resumeProbe, displayPlan, myEntries, classStatus]
@@ -302,6 +306,7 @@ export default function HomeScreen() {
           entries: myEntries,
           metaDays: liveRaw?.[TIMETABLE_META_KEY]?.days,
           semesterStartISO: getSemesterStartDate(calendar ?? null),
+          exclude: examPhase.exclude,
         },
       })
     );

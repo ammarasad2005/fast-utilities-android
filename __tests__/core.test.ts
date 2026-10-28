@@ -10,11 +10,11 @@ import { filterExams, filterSummerExams, matchesSummerCourse, groupByDay, sortBy
 import { buildRoomCalendar, getAvailableRooms, STANDARD_SLOTS, groupRoomsByBlock, mergeRoomCalendars } from '@/core/roomLogic';
 import { flattenFaculty, searchFaculty, getFacultyRank, formatFacultyShareText } from '@/core/faculty';
 import { getCalendarCells, parseEventDate } from '@/core/events';
-import { resolveWeekPlan, attachEntries, getEffectiveTodayDate, isTomorrowPreview } from '@/core/weekPlan';
+import { resolveWeekPlan, attachEntries, getEffectiveTodayDate, isTomorrowPreview, type WeekPlan } from '@/core/weekPlan';
 import { computeClassStatus } from '@/core/liveClass';
 import { buildSnapshot, epochFor, buildFollowupChain, snapshotEndMs } from '@/widgets/nextClassWidget';
 import { parseRemoteVersion, isUpdateAvailable, localVersionCode } from '@/updates/checkUpdate';
-import { resolveExamPhase, type ExamPhaseInput } from '@/core/examWindow';
+import { resolveExamPhase, filterExamWindowSheets, type ExamPhaseInput, type DateRange } from '@/core/examWindow';
 import { getSemesterProgress, getSemesterMilestones, getSemesterStartDate, getSemesterEndDate, getFinalExamsEndDate, getSemesterWeekNumber, computeCurrentPhase } from '@/core/semester';
 import type { RawTimetableJSON, ExamEntry, RawFacultyDepartment, TimetableEntry, SemesterCalendar } from '@/core/types';
 
@@ -979,6 +979,9 @@ describe('resolveExamPhase', () => {
     ],
   } as SemesterCalendar;
 
+  const WIN = { startISO: '2026-10-19', endISO: '2026-10-21' };
+  const FINALS = { startISO: '2026-12-14', endISO: '2026-12-20' };
+
   const mkRow = (
     date: string,
     time = '09:00 AM – 11:00 AM',
@@ -1015,34 +1018,37 @@ describe('resolveExamPhase', () => {
   });
 
   it('visibility off: the calendar range holds for its whole tenure', () => {
-    const p = resolveExamPhase(base({ visibilityOn: false, rows: [] }));
-    expect(p.kind).toBe('exams');
-    if (p.kind === 'exams') {
-      expect(p.untilEpochMs).toBe(at(2026, 10, 22, 0).getTime() - 1); // Wed 23:59:59.999
-      expect(p.anchorISO).toBe('2026-10-22');
-    }
+    expect(resolveExamPhase(base({ visibilityOn: false, rows: [] }))).toEqual({
+      kind: 'exams',
+      untilEpochMs: at(2026, 10, 22, 0).getTime() - 1, // Wed 23:59:59.999
+      anchorISO: '2026-10-22',
+      exclude: [WIN, FINALS],
+    });
   });
 
-  it('visibility off: outside any calendar exam range → classes', () => {
+  it('visibility off: outside any calendar exam range → classes (finals still masked)', () => {
     expect(
-      resolveExamPhase(base({ visibilityOn: false, rows: [], now: at(2026, 11, 5, 12) })).kind
-    ).toBe('classes');
+      resolveExamPhase(base({ visibilityOn: false, rows: [], now: at(2026, 11, 5, 12) }))
+    ).toEqual({ kind: 'classes', exclude: [FINALS] });
   });
 
   it('visibility off: final examinations are a window too', () => {
-    const p = resolveExamPhase(
-      base({ visibilityOn: false, rows: [], now: at(2026, 12, 15, 9) })
-    );
-    expect(p.kind).toBe('exams');
-    if (p.kind === 'exams') expect(p.anchorISO).toBe('2026-12-21');
+    expect(
+      resolveExamPhase(base({ visibilityOn: false, rows: [], now: at(2026, 12, 15, 9) }))
+    ).toEqual({
+      kind: 'exams',
+      untilEpochMs: at(2026, 12, 21, 0).getTime() - 1,
+      anchorISO: '2026-12-21',
+      exclude: [FINALS],
+    });
   });
 
   it('untagged student holds until the OVERALL last exam of the schedule', () => {
-    const p = resolveExamPhase(base({ now: at(2026, 10, 19, 10) }));
-    expect(p).toEqual({
+    expect(resolveExamPhase(base({ now: at(2026, 10, 19, 10) }))).toEqual({
       kind: 'exams',
       untilEpochMs: at(2026, 10, 21, 11).getTime(),
       anchorISO: '2026-10-22',
+      exclude: [WIN],
     });
   });
 
@@ -1050,29 +1056,41 @@ describe('resolveExamPhase', () => {
     expect(resolveExamPhase(base({ now: at(2026, 10, 21, 11, 30) }))).toEqual({
       kind: 'resume',
       anchorISO: '2026-10-22',
+      exclude: [WIN],
     });
   });
 
-  it('back to normal the day after the window', () => {
-    expect(resolveExamPhase(base({ now: at(2026, 10, 22, 9) })).kind).toBe('classes');
+  it('back to normal the day after the window — and no masking left behind', () => {
+    expect(resolveExamPhase(base({ now: at(2026, 10, 22, 9) }))).toEqual({
+      kind: 'classes',
+      exclude: [],
+    });
   });
 
-  it('the day before the first exam is still a normal class day', () => {
-    expect(resolveExamPhase(base({ now: at(2026, 10, 18, 15) })).kind).toBe('classes');
+  it('THE REGRESSION: the day before the window runs classes but masks window days', () => {
+    // Today (Oct 18) is a normal teaching day — but "next class" lookahead must
+    // never surface Oct 19–21 (all exam days); the ship lists them as excluded.
+    expect(resolveExamPhase(base({ now: at(2026, 10, 18, 18) }))).toEqual({
+      kind: 'classes',
+      exclude: [WIN],
+    });
   });
 
   it("tagged student: hold lifts at HIS OWN last exam, not the schedule's", () => {
     const personal = [winRows[0], winRows[1]]; // last = Tue 20 Oct 11:00
-    const held = resolveExamPhase(base({ personal, now: at(2026, 10, 20, 10) }));
-    expect(held).toEqual({
+    expect(resolveExamPhase(base({ personal, now: at(2026, 10, 20, 10) }))).toEqual({
       kind: 'exams',
       untilEpochMs: at(2026, 10, 20, 11).getTime(),
       anchorISO: '2026-10-22',
+      exclude: [WIN],
     });
     // the instant that exam has passed, resume preview takes over — even
     // though other students still have Wed exams
-    const done = resolveExamPhase(base({ personal, now: at(2026, 10, 20, 11, 30) }));
-    expect(done).toEqual({ kind: 'resume', anchorISO: '2026-10-22' });
+    expect(resolveExamPhase(base({ personal, now: at(2026, 10, 20, 11, 30) }))).toEqual({
+      kind: 'resume',
+      anchorISO: '2026-10-22',
+      exclude: [WIN],
+    });
   });
 
   it('last exam ends exactly at its end time: that instant is already resume', () => {
@@ -1081,49 +1099,81 @@ describe('resolveExamPhase', () => {
   });
 
   it('a tag resolving to zero rows behaves as untagged', () => {
-    const p = resolveExamPhase(base({ personal: [], now: at(2026, 10, 19, 10) }));
-    expect(p).toEqual({
+    expect(resolveExamPhase(base({ personal: [], now: at(2026, 10, 19, 10) }))).toEqual({
       kind: 'exams',
       untilEpochMs: at(2026, 10, 21, 11).getTime(),
       anchorISO: '2026-10-22',
+      exclude: [WIN],
     });
   });
 
   it('schedule dates win over the calendar on mismatch (slippage rule)', () => {
     // Schedule fully in the past even though the calendar claims a window NOW.
     const pastRows = [mkRow('05/10/2026'), mkRow('07/10/2026')];
-    expect(
-      resolveExamPhase(base({ rows: pastRows, now: at(2026, 10, 20, 10) })).kind
-    ).toBe('classes');
+    expect(resolveExamPhase(base({ rows: pastRows, now: at(2026, 10, 20, 10) }))).toEqual({
+      kind: 'classes',
+      exclude: [],
+    });
   });
 
-  it('a dump mixing two sessionals keeps the current cluster as the window', () => {
+  it('a dump mixing two sessionals gates by the current cluster AND masks both', () => {
     const mixed = [...winRows, mkRow('30/11/2026')]; // second sessional, >10d gap
-    const p = resolveExamPhase(base({ rows: mixed, now: at(2026, 10, 20, 10) }));
-    expect(p).toEqual({
+    expect(resolveExamPhase(base({ rows: mixed, now: at(2026, 10, 20, 10) }))).toEqual({
       kind: 'exams',
       untilEpochMs: at(2026, 10, 21, 11).getTime(),
       anchorISO: '2026-10-22',
+      exclude: [WIN, { startISO: '2026-11-30', endISO: '2026-11-30' }],
     });
   });
 
   it('a personal row from a later cluster can never extend the current hold', () => {
     const personal = [winRows[0], mkRow('30/11/2026')];
     const rows = [...winRows, mkRow('30/11/2026')];
-    const p = resolveExamPhase(base({ rows, personal, now: at(2026, 10, 19, 10) }));
-    expect(p).toEqual({
+    expect(resolveExamPhase(base({ rows, personal, now: at(2026, 10, 19, 10) }))).toEqual({
       kind: 'exams',
       untilEpochMs: at(2026, 10, 21, 11).getTime(), // clamped to this window's last exam
       anchorISO: '2026-10-22',
+      exclude: [WIN, { startISO: '2026-11-30', endISO: '2026-11-30' }],
     });
   });
 
   it('visibility on but zero usable rows → calendar tenure fallback', () => {
-    const p = resolveExamPhase(base({ rows: [mkRow('not-a-date')], now: at(2026, 10, 20, 10) }));
-    expect(p.kind).toBe('exams');
-    if (p.kind === 'exams') {
-      expect(p.untilEpochMs).toBe(at(2026, 10, 22, 0).getTime() - 1);
-      expect(p.anchorISO).toBe('2026-10-22');
-    }
+    expect(
+      resolveExamPhase(base({ rows: [mkRow('not-a-date')], now: at(2026, 10, 20, 10) }))
+    ).toEqual({
+      kind: 'exams',
+      untilEpochMs: at(2026, 10, 22, 0).getTime() - 1,
+      anchorISO: '2026-10-22',
+      exclude: [WIN, FINALS],
+    });
+  });
+});
+
+describe('filterExamWindowSheets', () => {
+  const plan = {
+    sheets: [
+      { day: 'Wednesday', sheetName: 'Wednesday', isoDate: '2026-10-28', dateStr: '28 Oct', isMakeup: false, isToday: true },
+      { day: 'Thursday', sheetName: 'Thursday', isoDate: '2026-10-29', dateStr: '29 Oct', isMakeup: false, isToday: false },
+      { day: 'Weird', sheetName: 'Weird', isoDate: '', dateStr: '', isMakeup: false, isToday: false },
+    ],
+    upcomingMakeupDays: [
+      { day: 'Friday', sheetName: 'Friday (30/10/2026)', isoDate: '2026-10-30', dateStr: '30 Oct', isMakeup: true, isToday: false },
+      { day: 'Monday', sheetName: 'Monday (5/11/2026)', isoDate: '2026-11-05', dateStr: '5 Nov', isMakeup: true, isToday: false },
+    ],
+    todayISO: '2026-10-28',
+    todayDayName: 'Wednesday',
+    tomorrowPreview: false,
+    beforeSemesterStart: false,
+  } as WeekPlan;
+
+  it('drops every sheet dated inside a window; keeps today and unresolvable sheets', () => {
+    const filtered = filterExamWindowSheets(plan, [{ startISO: '2026-10-29', endISO: '2026-11-02' }])!;
+    expect(filtered.sheets.map((s) => s.isoDate)).toEqual(['2026-10-28', '']);
+    expect(filtered.upcomingMakeupDays.map((s) => s.isoDate)).toEqual(['2026-11-05']);
+  });
+
+  it('is an identity no-op with no ranges or no plan', () => {
+    expect(filterExamWindowSheets(plan, [])).toBe(plan);
+    expect(filterExamWindowSheets(null, [{ startISO: '2026-10-29', endISO: '2026-11-02' }])).toBeNull();
   });
 });

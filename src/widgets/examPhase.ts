@@ -46,6 +46,6 @@ export async function loadExamPhase(now: Date = new Date()): Promise<ExamPhase> 
       now,
     });
   } catch {
-    return { kind: 'classes' };
+    return { kind: 'classes', exclude: [] };
   }
 }

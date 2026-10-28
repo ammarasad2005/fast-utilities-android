@@ -44,7 +44,7 @@ import {
   getWidgetStore,
   type NextClassWidgetSnapshot,
 } from '../../modules/widget-store/src/WidgetStoreModule';
-import { type ExamPhase } from '@/core/examWindow';
+import { type ExamPhase, type DateRange, filterExamWindowSheets } from '@/core/examWindow';
 import { toISODate } from '@/core/dates';
 import { loadExamPhase } from './examPhase';
 
@@ -135,6 +135,8 @@ export interface WidgetChainSource {
   entries: TimetableEntry[];
   metaDays: TimetableSheetMeta[] | undefined | null;
   semesterStartISO: string | null;
+  /** Exam-window date ranges masked out of every plan resolution. */
+  exclude?: DateRange[];
 }
 
 /**
@@ -161,8 +163,11 @@ export function buildFollowupChain(
       semesterStartISO: source.semesterStartISO,
       now: probe,
     });
-    const status = computeClassStatus(source.entries, plan, probe);
-    const snap = buildSnapshot(status, plan, false, probe, undefined, displayTodayISO);
+    // Mask exam-window days: chains must never carry a phantom class dated
+    // inside a window (the pre-window evening peek is the classic case).
+    const maskedPlan = filterExamWindowSheets(plan, source.exclude) ?? plan;
+    const status = computeClassStatus(source.entries, maskedPlan, probe);
+    const snap = buildSnapshot(status, maskedPlan, false, probe, undefined, displayTodayISO);
     if (snap.state === 'next' || snap.state === 'ongoing') {
       chain.push(snap);
       // next probe: just past THIS class's end
@@ -222,6 +227,9 @@ export function buildPhaseSnapshot(
   const updatedAt = opts.now.getTime();
   if (opts.needsTag) return { state: 'needsTag', updatedAt };
 
+  // Every followup chain this builder emits masks all exam-window days.
+  const chain: WidgetChainSource = { ...opts.chain, exclude: phase.exclude };
+
   if (phase.kind === 'exams') {
     const probe = anchorProbe(phase.anchorISO);
     const out: NextClassWidgetSnapshot = {
@@ -231,22 +239,36 @@ export function buildPhaseSnapshot(
       untilEpochMs: phase.untilEpochMs,
       updatedAt,
     };
-    const chain = buildFollowupChain(opts.chain, probe.getTime() - 61_000, [], toISODate(opts.now));
-    if (chain) out.followup = chain;
+    const queue = buildFollowupChain(chain, probe.getTime() - 61_000, [], toISODate(opts.now));
+    if (queue) out.followup = queue;
     return out;
   }
 
   if (phase.kind === 'resume') {
     const probe = anchorProbe(phase.anchorISO);
-    const plan = resolveWeekPlan(opts.chain.metaDays, {
-      semesterStartISO: opts.chain.semesterStartISO,
+    const rawPlan = resolveWeekPlan(chain.metaDays, {
+      semesterStartISO: chain.semesterStartISO,
       now: probe,
     });
-    const status = computeClassStatus(opts.chain.entries, plan, probe);
-    return buildSnapshot(status, plan, false, probe, opts.chain, toISODate(opts.now));
+    const plan = filterExamWindowSheets(rawPlan, phase.exclude) ?? rawPlan;
+    const status = computeClassStatus(chain.entries, plan, probe);
+    return buildSnapshot(status, plan, false, probe, chain, toISODate(opts.now));
   }
 
-  return buildSnapshot(opts.status, opts.plan, false, opts.now, opts.chain);
+  // classes: the caller's status/plan SHOULD already be masked (Home + the
+  // background sync both filter before computing) — filter here too so a
+  // future call site cannot accidentally leak a phantom window-day class.
+  const plan = filterExamWindowSheets(opts.plan, phase.exclude) ?? opts.plan;
+  const status = opts.status
+    ? {
+        ...opts.status,
+        classes: opts.status.classes.filter((c) => {
+          if (!c.dateISO || !phase.exclude.length) return true;
+          return !phase.exclude.some((r) => r.startISO <= c.dateISO && c.dateISO <= r.endISO);
+        }),
+      }
+    : opts.status;
+  return buildSnapshot(status, plan, false, opts.now, chain);
 }
 
 /** Avoid re-poking the widget manager when the rendered content is unchanged. */
@@ -325,21 +347,25 @@ export async function syncNextClassWidgetFromCache(now: Date = new Date()): Prom
 
     const semesterStartISO = getSemesterStartDate(calendarEntry?.data ?? null);
     const plan = resolveWeekPlan(raw[TIMETABLE_META_KEY]?.days, { semesterStartISO });
-    const status = computeClassStatus(myEntries, plan, now);
 
     // Exam-window gate: holds classes / previews the post-window resume
     // exactly like the Home card (same builder). Fails open to 'classes'.
     const phase = await loadExamPhase(now);
+    // Mask exam-window days BEFORE computing status: a pre-window peek must
+    // never surface a class dated inside any current/upcoming window.
+    const maskedPlan = filterExamWindowSheets(plan, phase.exclude) ?? plan;
+    const status = computeClassStatus(myEntries, maskedPlan, now);
     publishNextClassWidget(
       buildPhaseSnapshot(phase, {
         status,
-        plan,
+        plan: maskedPlan,
         needsTag: false,
         now,
         chain: {
           entries: myEntries,
           metaDays: raw[TIMETABLE_META_KEY]?.days,
           semesterStartISO,
+          exclude: phase.exclude,
         },
       })
     );

@@ -25,26 +25,40 @@
  *               preview their classes from the day AFTER the window ends
  *               (timetable sheet is persistent ground truth, edited or not).
  *
+ * EVERY phase carries `exclude`: the date ranges of the current + all upcoming
+ * exam windows. Consumers filter those dates out of the class pipeline, so the
+ * day BEFORE a window (and the 17:30 tomorrow-roll the evening before it) can
+ * never surface a phantom class dated INSIDE a window — the lookahead simply
+ * skips to the first teaching day after the window. The same shield quietly
+ * covers the December finals window all semester long.
+ *
  * Pure — the I/O (AsyncStorage cache reads) lives in @/widgets/examPhase.
  */
 
 import { parseExamDate } from './dates';
 import { parseExamTimeRange } from './exams';
 import type { ExamEntry, SemesterCalendar } from './types';
+import type { WeekPlan } from './weekPlan';
+
+/** Inclusive local-date range, both endpoints "YYYY-MM-DD". */
+export interface DateRange {
+  startISO: string;
+  endISO: string;
+}
 
 /** What class tracking should display right now. */
 export type ExamPhase =
   /** Normal next/ongoing class tracking. */
-  | { kind: 'classes' }
+  | { kind: 'classes'; exclude: DateRange[] }
   /**
    * Window active, student's exams not finished: hold state.
    * `untilEpochMs` — exact instant the hold should lift (last relevant exam's
    * end, or the window's day-end in calendar-only mode).
    * `anchorISO` — first day after the window (the resume-preview anchor).
    */
-  | { kind: 'exams'; untilEpochMs: number; anchorISO: string }
+  | { kind: 'exams'; untilEpochMs: number; anchorISO: string; exclude: DateRange[] }
   /** Student's exams done, window still open: probe classes at `anchorISO`. */
-  | { kind: 'resume'; anchorISO: string };
+  | { kind: 'resume'; anchorISO: string; exclude: DateRange[] };
 
 export interface ExamPhaseInput {
   calendar: SemesterCalendar | null;
@@ -96,6 +110,12 @@ function isoOfDay(dayMs: number): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Local-midnight epoch an ISO date, null when garbled. */
+function dayMsOfISO(iso: string): number | null {
+  const d = new Date(iso + 'T00:00:00');
+  return Number.isNaN(d.getTime()) ? null : d.getTime();
+}
+
 /** Exam days further apart than this belong to different sessional clusters. */
 const CLUSTER_GAP_MS = 10 * 24 * 60 * 60 * 1000;
 
@@ -106,21 +126,21 @@ interface ExamCluster {
 }
 
 /**
- * Group exam rows into sessional clusters (gaps >10 days split). A dump that
- * mixes TWO sessionals would otherwise stretch one absurd months-long window;
- * clustering keeps each sessional its own window. Returns the earliest cluster
- * whose last day hasn't fully passed, or null when everything is over.
+ * Group exam rows into sessional clusters (gaps >10 days split), sorted by
+ * first day. A dump that mixes TWO sessionals would otherwise stretch one
+ * absurd months-long window; clustering keeps each sessional its own window —
+ * and each cluster becomes one exclusion range (the lookahead shield).
  */
-function pickCluster(rows: RowWindow[], nowMs: number): ExamCluster | null {
+function clusterAll(rows: RowWindow[]): ExamCluster[] {
   const sorted = [...rows].sort((a, b) => a.dayMs - b.dayMs || a.endMs - b.endMs);
+  const out: ExamCluster[] = [];
   let startDayMs = sorted[0].dayMs;
   let lastDayMs = sorted[0].dayMs;
   let lastEndMs = sorted[0].endMs;
-  const flush = (): ExamCluster => ({ startDayMs, lastDayMs, lastEndMs });
   for (let i = 1; i < sorted.length; i++) {
     const r = sorted[i];
     if (r.dayMs - lastDayMs > CLUSTER_GAP_MS) {
-      if (dayEndMs(lastDayMs) >= nowMs) return flush();
+      out.push({ startDayMs, lastDayMs, lastEndMs });
       startDayMs = r.dayMs;
       lastDayMs = r.dayMs;
       lastEndMs = r.endMs;
@@ -129,55 +149,86 @@ function pickCluster(rows: RowWindow[], nowMs: number): ExamCluster | null {
     if (r.dayMs > lastDayMs) lastDayMs = r.dayMs;
     if (r.endMs > lastEndMs) lastEndMs = r.endMs;
   }
-  return dayEndMs(lastDayMs) >= nowMs ? flush() : null;
+  out.push({ startDayMs, lastDayMs, lastEndMs });
+  return out;
 }
 
 /**
- * End day of the calendar exam range (sessional / examinations, finals
- * included) containing today, as a local-midnight epoch — or null. Labels
- * like "Readmission Test" are deliberately NOT matched: only real windows.
+ * All calendar exam ranges (sessional / examinations, finals included) whose
+ * end day hasn't passed, sorted by start. Labels like "Readmission Test" are
+ * deliberately NOT matched: only real windows.
  */
-function activeCalendarExamEndDay(cal: SemesterCalendar | null, now: Date): number | null {
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  const todayISO = isoOfDay(today.getTime());
+function calendarExamRanges(cal: SemesterCalendar | null, now: Date): DateRange[] {
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const out: DateRange[] = [];
   for (const k of cal?.keyDates ?? []) {
     if (!k.date) continue;
     const low = (k.label ?? '').toLowerCase();
     if (!low.includes('sessional') && !low.includes('examination')) continue;
     const end = k.endDate ?? k.date;
-    if (k.date <= todayISO && todayISO <= end) {
-      const endDay = new Date(end + 'T00:00:00');
-      if (!Number.isNaN(endDay.getTime())) return endDay.getTime();
-    }
+    const sMs = dayMsOfISO(k.date);
+    const eMs = dayMsOfISO(end);
+    if (sMs == null || eMs == null) continue;
+    if (eMs >= todayStart.getTime()) out.push({ startISO: k.date, endISO: end });
   }
-  return null;
+  return out.sort((a, b) => a.startISO.localeCompare(b.startISO));
+}
+
+/**
+ * Drops every resolved timetable sheet dated inside an exam window, so
+ * "next class" / follow-up chains / the home card can never surface a
+ * phantom class on an exam day (e.g. the evening before the window opens).
+ * Sheets with an unresolvable date are kept — they are rare and harmless.
+ */
+export function filterExamWindowSheets(
+  plan: WeekPlan | null,
+  ranges: DateRange[] | undefined
+): WeekPlan | null {
+  if (!plan || !ranges?.length) return plan;
+  const inRange = (iso: string) => ranges.some((r) => r.startISO <= iso && iso <= r.endISO);
+  return {
+    ...plan,
+    sheets: plan.sheets.filter((s) => !s.isoDate || !inRange(s.isoDate)),
+    upcomingMakeupDays: plan.upcomingMakeupDays.filter((s) => !s.isoDate || !inRange(s.isoDate)),
+  };
 }
 
 /**
  * Resolve which phase class tracking is in. Pure — unit-test target.
  *
  * Priority ladder (per spec):
- *  1. Published schedule (visibility on + usable rows): its own earliest day →
- *     overall last exam end define the window; the calendar is ignored even if
- *     it disagrees. Within it: 'exams' until the personal-last (or overall-last
- *     for untagged) exam end, then 'resume' until the window's day ends.
+ *  1. Published schedule (visibility on + usable rows): its own clustered
+ *     ranges both gate the day AND supply `exclude`; the cluster containing
+ *     today (or the next upcoming one) decides the window bounds. Within it:
+ *     'exams' until the personal-last (or overall-last for untagged) exam end,
+ *     then 'resume' until the window's day ends.
  *  2. Otherwise the semester calendar's ranges hold for their whole tenure:
  *     'exams' with day-end `until`, and no resume phase.
  *  3. Else: 'classes'.
  */
 export function resolveExamPhase(input: ExamPhaseInput): ExamPhase {
   const nowMs = input.now.getTime();
+  const todayStart = new Date(input.now);
+  todayStart.setHours(0, 0, 0, 0);
   const rows = input.rows
     .map(examRowWindow)
     .filter((w): w is RowWindow => w !== null);
 
   if (input.visibilityOn && rows.length) {
-    const cluster = pickCluster(rows, nowMs);
-    if (!cluster) return { kind: 'classes' }; // schedule fully past: it wins
+    const clusters = clusterAll(rows);
+    const exclude: DateRange[] = clusters
+      .filter((c) => c.lastDayMs >= todayStart.getTime())
+      .map((c) => ({ startISO: isoOfDay(c.startDayMs), endISO: isoOfDay(c.lastDayMs) }));
+    // The active window is the earliest cluster whose last day hasn't passed.
+    const cluster = clusters.find((c) => dayEndMs(c.lastDayMs) >= nowMs) ?? null;
+    if (!cluster) return { kind: 'classes', exclude };
+
     const windowStartMs = cluster.startDayMs; // first exam day, 00:00 local
     const windowEndMs = dayEndMs(cluster.lastDayMs); // last exam day, 23:59:59.999
-    if (nowMs < windowStartMs || nowMs > windowEndMs) return { kind: 'classes' };
+    // Outside the bounds — the day before included — classes track normally,
+    // with `exclude` masking every window day from the lookahead.
+    if (nowMs < windowStartMs || nowMs > windowEndMs) return { kind: 'classes', exclude };
 
     const anchorISO = isoOfDay(addDays(cluster.lastDayMs, 1));
     // Untagged / unresolvable tag: hold until the OVERALL last exam passes.
@@ -194,17 +245,21 @@ export function resolveExamPhase(input: ExamPhaseInput): ExamPhase {
       }
     }
     return nowMs < until
-      ? { kind: 'exams', untilEpochMs: until, anchorISO }
-      : { kind: 'resume', anchorISO };
+      ? { kind: 'exams', untilEpochMs: until, anchorISO, exclude }
+      : { kind: 'resume', anchorISO, exclude };
   }
 
-  const calEndDay = activeCalendarExamEndDay(input.calendar, input.now);
-  if (calEndDay != null) {
+  const ranges = calendarExamRanges(input.calendar, input.now);
+  const todayISO = isoOfDay(todayStart.getTime());
+  const active = ranges.find((r) => r.startISO <= todayISO && todayISO <= r.endISO) ?? null;
+  if (active) {
+    const endDay = dayMsOfISO(active.endISO)!;
     return {
       kind: 'exams',
-      untilEpochMs: dayEndMs(calEndDay),
-      anchorISO: isoOfDay(addDays(calEndDay, 1)),
+      untilEpochMs: dayEndMs(endDay),
+      anchorISO: isoOfDay(addDays(endDay, 1)),
+      exclude: ranges,
     };
   }
-  return { kind: 'classes' };
+  return { kind: 'classes', exclude: ranges };
 }
