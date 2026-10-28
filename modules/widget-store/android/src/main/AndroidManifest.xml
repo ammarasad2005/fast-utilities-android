@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Opt-in exemption so FCM wakes + expedited syncs are not standby-bucket
+       deferred (sideloaded builds get aggressively bucketed on Samsung/Xiaomi
+       class devices). Requested ONLY from the explicit user action in More. -->
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
   <application>
     <!-- Home-screen widgets: next / ongoing class tracker.
          Four size variants, each its own receiver (one receiver = one picker

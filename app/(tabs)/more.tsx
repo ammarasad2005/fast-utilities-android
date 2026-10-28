@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStyles, useTheme, type ThemeColors } from '@/theme/ThemeContext';
+import { isBatteryExempt, requestBatteryExemption } from '../../modules/widget-store/src/WidgetStoreModule';
 
 const ITEMS: {
   id: string;
@@ -16,6 +17,7 @@ const ITEMS: {
   { id: 'semester', title: 'Semester Schedule', description: 'Academic calendar — key dates, sessionals and finals.', icon: 'flag', route: '/semester' },
   { id: 'events', title: 'Campus Events', description: 'Seminars, drives and activities in a monthly view.', icon: 'sparkles', route: '/events' },
   { id: 'feedback', title: 'Send Feedback', description: 'Report a bug, flag wrong data, or suggest something — in two taps.', icon: 'chatbox-ellipses', route: '/feedback' },
+  { id: 'battery', title: 'Fix delayed notifications', description: '', icon: 'notifications', route: '' },
   { id: 'about', title: 'About', description: 'App details, data sources and attribution.', icon: 'information-circle', route: '/about' },
 ];
 
@@ -24,6 +26,15 @@ export default function MoreScreen() {
   const { colors } = useTheme();
   const router = useRouter();
 
+  // Read on every focus — returning from the system exemption dialog gives an
+  // instant, truthful state flip. Opt-in ONLY: nothing pops up unsolicited.
+  const [batteryExempt, setBatteryExempt] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setBatteryExempt(isBatteryExempt());
+    }, [])
+  );
+
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -31,25 +42,57 @@ export default function MoreScreen() {
         <Text style={styles.subtitle}>Everything else FAST Islamabad has to offer.</Text>
 
         <View style={{ marginTop: 20, gap: 10 }}>
-          {ITEMS.map((item) => (
-            <Pressable
-              key={item.id}
-              onPress={() => router.push(item.route as any)}
-              android_ripple={{ color: colors.border }}
-              style={({ pressed }) => [styles.row, pressed && { opacity: 0.85 }]}
-            >
-              <View style={styles.iconWrap}>
-                <Ionicons name={item.icon} size={22} color={colors.brand} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle}>{item.title}</Text>
-                <Text style={styles.rowDesc} numberOfLines={2}>
-                  {item.description}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
-            </Pressable>
-          ))}
+          {ITEMS.map((item) => {
+            const isBattery = item.id === 'battery';
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() => {
+                  if (isBattery) {
+                    if (!batteryExempt) requestBatteryExemption();
+                  } else {
+                    router.push(item.route as any);
+                  }
+                }}
+                android_ripple={{ color: colors.border }}
+                style={({ pressed }) => [styles.row, pressed && { opacity: 0.85 }]}
+              >
+                <View
+                  style={[
+                    styles.iconWrap,
+                    isBattery && !batteryExempt && { backgroundColor: colors.warningBg },
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      isBattery
+                        ? batteryExempt
+                          ? 'notifications'
+                          : 'notifications-off-outline'
+                        : item.icon
+                    }
+                    size={22}
+                    color={isBattery && !batteryExempt ? colors.warning : colors.brand}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle}>{item.title}</Text>
+                  <Text style={styles.rowDesc} numberOfLines={2}>
+                    {isBattery
+                      ? batteryExempt
+                        ? 'All set — campus updates arrive on time.'
+                        : 'Updates may arrive late — allow unrestricted battery (recommended).'
+                      : item.description}
+                  </Text>
+                </View>
+                {isBattery && batteryExempt ? (
+                  <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                ) : (
+                  <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
+                )}
+              </Pressable>
+            );
+          })}
         </View>
 
         <Text style={styles.footer}>FAST NUCES · Islamabad Campus</Text>

@@ -1,5 +1,10 @@
 package expo.modules.widgetstore
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessaging
 import expo.modules.kotlin.modules.Module
@@ -19,6 +24,46 @@ class PushSetupModule : Module() {
     Function("ensureSetup") {
       ensureTopicSubscription()
       true
+    }
+
+    /** True when the app is already excluded from battery optimization. */
+    Function("isBatteryExempt") {
+      val ctx = appContext.reactContext ?: return@Function false
+      val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager
+      pm?.isIgnoringBatteryOptimizations(ctx.packageName) == true
+    }
+
+    /**
+     * Opens the system "allow unrestricted battery" dialog for this app.
+     * Only ever fired from an explicit user tap (More → Fix delayed
+     * notifications) — never nagged at startup. Some ROMs reject the direct
+     * dialog; those fall back to the app's details page.
+     */
+    Function("requestBatteryExemption") {
+      val ctx = appContext.reactContext ?: return@Function false
+      val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager
+      if (pm?.isIgnoringBatteryOptimizations(ctx.packageName) == true) return@Function true
+      try {
+        ctx.startActivity(
+          Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+            .setData(Uri.parse("package:" + ctx.packageName))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        true
+      } catch (e: Exception) {
+        Log.w(TAG, "direct battery dialog rejected, opening app details", e)
+        try {
+          ctx.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+              .setData(Uri.parse("package:" + ctx.packageName))
+              .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          )
+          true
+        } catch (inner: Exception) {
+          Log.w(TAG, "battery settings open failed", inner)
+          false
+        }
+      }
     }
   }
 

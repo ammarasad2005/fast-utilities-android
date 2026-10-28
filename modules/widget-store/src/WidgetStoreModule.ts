@@ -42,6 +42,8 @@ export type {
 
 declare class PushSetupModule extends NativeModule {
   ensureSetup(): boolean;
+  isBatteryExempt(): boolean;
+  requestBatteryExemption(): boolean;
 }
 
 let pushCached: PushSetupModule | null | undefined;
@@ -67,5 +69,26 @@ export function ensurePushSetup(): void {
     getPushSetup()?.ensureSetup();
   } catch {
     // never blocks app start
+  }
+}
+
+/** True when Android already excludes the app from battery optimization. */
+export function isBatteryExempt(): boolean {
+  try {
+    return getPushSetup()?.isBatteryExempt() === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * User-initiated only (More → Fix delayed notifications): opens the system
+ * battery-exemption dialog. False where the native module/intent is absent.
+ */
+export function requestBatteryExemption(): boolean {
+  try {
+    return getPushSetup()?.requestBatteryExemption() === true;
+  } catch {
+    return false;
   }
 }
