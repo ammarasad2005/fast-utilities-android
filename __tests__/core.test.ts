@@ -12,9 +12,9 @@ import { flattenFaculty, searchFaculty, getFacultyRank, formatFacultyShareText }
 import { getCalendarCells, parseEventDate } from '@/core/events';
 import { resolveWeekPlan, attachEntries, getEffectiveTodayDate, isTomorrowPreview, type WeekPlan } from '@/core/weekPlan';
 import { computeClassStatus } from '@/core/liveClass';
-import { buildSnapshot, epochFor, buildFollowupChain, snapshotEndMs } from '@/widgets/nextClassWidget';
+import { buildSnapshot, buildPhaseSnapshot, epochFor, buildFollowupChain, snapshotEndMs, resolveClassView } from '@/widgets/nextClassWidget';
 import { parseRemoteVersion, isUpdateAvailable, localVersionCode } from '@/updates/checkUpdate';
-import { resolveExamPhase, filterExamWindowSheets, type ExamPhaseInput, type DateRange } from '@/core/examWindow';
+import { resolveExamPhase, filterExamWindowSheets, type ExamPhaseInput, type ExamPhase, type DateRange } from '@/core/examWindow';
 import { getSemesterProgress, getSemesterMilestones, getSemesterStartDate, getSemesterEndDate, getFinalExamsEndDate, getSemesterWeekNumber, computeCurrentPhase } from '@/core/semester';
 import type { RawTimetableJSON, ExamEntry, RawFacultyDepartment, TimetableEntry, SemesterCalendar } from '@/core/types';
 
@@ -1029,7 +1029,12 @@ describe('resolveExamPhase', () => {
   it('visibility off: outside any calendar exam range → classes (finals still masked)', () => {
     expect(
       resolveExamPhase(base({ visibilityOn: false, rows: [], now: at(2026, 11, 5, 12) }))
-    ).toEqual({ kind: 'classes', exclude: [FINALS] });
+    ).toEqual({
+      kind: 'classes',
+      exclude: [FINALS],
+      // ...and the finals are already queued up for the early-hold handoff
+      upcoming: { untilEpochMs: at(2026, 12, 21, 0).getTime() - 1, anchorISO: '2026-12-21' },
+    });
   });
 
   it('visibility off: final examinations are a window too', () => {
@@ -1067,12 +1072,15 @@ describe('resolveExamPhase', () => {
     });
   });
 
-  it('THE REGRESSION: the day before the window runs classes but masks window days', () => {
+  it('THE REGRESSION: the day before the window runs classes, masks window days, preloads hold timing', () => {
     // Today (Oct 18) is a normal teaching day — but "next class" lookahead must
-    // never surface Oct 19–21 (all exam days); the ship lists them as excluded.
+    // never surface Oct 19–21 (all exam days), and the early-hold handoff data
+    // rides along so consumers can engage the hold the moment lookahead would
+    // point into the window.
     expect(resolveExamPhase(base({ now: at(2026, 10, 18, 18) }))).toEqual({
       kind: 'classes',
       exclude: [WIN],
+      upcoming: { untilEpochMs: at(2026, 10, 21, 11).getTime(), anchorISO: '2026-10-22' },
     });
   });
 
@@ -1175,5 +1183,108 @@ describe('filterExamWindowSheets', () => {
   it('is an identity no-op with no ranges or no plan', () => {
     expect(filterExamWindowSheets(plan, [])).toBe(plan);
     expect(filterExamWindowSheets(null, [{ startISO: '2026-10-29', endISO: '2026-11-02' }])).toBeNull();
+  });
+});
+
+// ─── Early hold / resume / live view resolution + examBreak snapshots ────────
+// Fixture week: Mon 17 – Sat 22 Aug 2026 (metaW). Window: Wed 19 – Thu 20 Aug.
+
+describe('resolveClassView / buildPhaseSnapshot', () => {
+  const WIN2 = { startISO: '2026-08-19', endISO: '2026-08-20' }; // Wed–Thu
+  const UNTIL = new Date(2026, 7, 20, 11, 30).getTime(); // Thu 11:30 — last exam end
+  const phaseEarly: ExamPhase = {
+    kind: 'classes',
+    exclude: [WIN2],
+    upcoming: { untilEpochMs: UNTIL, anchorISO: '2026-08-21' },
+  };
+  const optsFor = (entries: TimetableEntry[], now: Date) => ({
+    entries,
+    metaDays: metaW,
+    semesterStartISO: '2026-08-17',
+    now,
+  });
+
+  it('normal tracking while real classes remain before the window', () => {
+    const v = resolveClassView(
+      phaseEarly,
+      optsFor(
+        [entry('Tuesday', '10:00-11:30'), entry('Wednesday', '08:30-09:50')],
+        at('2026-08-18T08:00:00')
+      )
+    );
+    expect(v.hold).toBe(false);
+    expect(v.status?.type).toBe('next');
+    expect(v.status?.classes[0].dateISO).toBe('2026-08-18');
+  });
+
+  it('EARLY HOLD: the lookahead pointing into the window switches on the hold now', () => {
+    // Tuesday noon: today's only class is over; the masked plan has nothing
+    // left (Wed/Thu are exam days), and the raw next class IS Wednesday's.
+    // Per the user's ruling, the hold engages from this very moment.
+    const v = resolveClassView(
+      phaseEarly,
+      optsFor(
+        [entry('Tuesday', '08:30-09:50'), entry('Wednesday', '08:30-09:50'), entry('Thursday', '10:00-11:30')],
+        at('2026-08-18T12:00:00')
+      )
+    );
+    expect(v.hold).toBe(true);
+    expect(v.untilEpochMs).toBe(UNTIL);
+    expect(v.anchorISO).toBe('2026-08-21');
+    expect(v.status).toBeNull();
+  });
+
+  it('no early hold after the window closed: the engine rolls to the real class next week', () => {
+    // Saturday noon, window ended Thursday: raw next = Wednesday +7 (Aug 26),
+    // NOT inside any window → truthful normal tracking, no hold.
+    const v = resolveClassView(
+      phaseEarly,
+      optsFor([entry('Wednesday', '08:30-09:50')], at('2026-08-22T12:00:00'))
+    );
+    expect(v.hold).toBe(false);
+    expect(v.status?.type).toBe('next');
+    expect(v.status?.classes[0].dateISO).toBe('2026-08-26');
+  });
+
+  it('without upcoming metadata the hold synthesizes window-end timing', () => {
+    const phaseNoUp: ExamPhase = { kind: 'classes', exclude: [WIN2] };
+    const v = resolveClassView(
+      phaseNoUp,
+      optsFor([entry('Wednesday', '08:30-09:50')], at('2026-08-18T12:00:00'))
+    );
+    expect(v.hold).toBe(true);
+    expect(v.anchorISO).toBe('2026-08-21');
+    expect(v.untilEpochMs).toBe(new Date('2026-08-21T00:00:00').getTime() - 1);
+  });
+
+  it('resume probes the anchor day and labels against the REAL today', () => {
+    const phaseResume: ExamPhase = { kind: 'resume', anchorISO: '2026-08-21', exclude: [WIN2] };
+    const v = resolveClassView(
+      phaseResume,
+      optsFor([entry('Friday', '10:00-11:30')], at('2026-08-20T12:00:00'))
+    );
+    expect(v.hold).toBe(false);
+    expect(v.status?.classes[0].dateISO).toBe('2026-08-21');
+    expect(v.plan?.todayISO).toBe('2026-08-20'); // so the card shows the date
+  });
+
+  it('early-hold snapshot: approved lines, until, and a post-window followup queue', () => {
+    const snap = buildPhaseSnapshot(phaseEarly, {
+      needsTag: false,
+      now: at('2026-08-18T12:00:00'),
+      chain: {
+        entries: [entry('Wednesday', '08:30-09:50'), entry('Friday', '10:00-11:30')],
+        metaDays: metaW,
+        semesterStartISO: '2026-08-17',
+        exclude: [WIN2],
+      },
+    });
+    expect(snap.state).toBe('examBreak');
+    expect(snap.course).toBe('Exams ongoing.');
+    expect(snap.sub).toBe('Stay tuned for update');
+    expect(snap.untilEpochMs).toBe(UNTIL);
+    expect(snap.followup?.[0]?.state).toBe('next');
+    expect(snap.followup?.[0]?.course).toBe('PF');
+    expect(snap.followup?.[0]?.sub).toContain('Fri'); // labelled vs real today
   });
 });

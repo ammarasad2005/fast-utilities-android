@@ -48,8 +48,12 @@ export interface DateRange {
 
 /** What class tracking should display right now. */
 export type ExamPhase =
-  /** Normal next/ongoing class tracking. */
-  | { kind: 'classes'; exclude: DateRange[] }
+  /**
+   * Normal next/ongoing class tracking. `upcoming` — when the NEXT window is
+   * already known — carries the hold timing it would use, so consumers can
+   * switch to the hold EARLY once the lookahead starts pointing into it.
+   */
+  | { kind: 'classes'; exclude: DateRange[]; upcoming?: { untilEpochMs: number; anchorISO: string } }
   /**
    * Window active, student's exams not finished: hold state.
    * `untilEpochMs` — exact instant the hold should lift (last relevant exam's
@@ -207,6 +211,24 @@ export function filterExamWindowSheets(
  *     'exams' with day-end `until`, and no resume phase.
  *  3. Else: 'classes'.
  */
+/** Hold-lift instant for one cluster: personal-last rule, clamped to it. */
+function clusterUntil(cluster: ExamCluster, personal: ExamEntry[] | null): number {
+  // Untagged / unresolvable tag: hold until the OVERALL last exam passes.
+  let until = cluster.lastEndMs;
+  if (personal?.length) {
+    const personalEnds = personal
+      .map(examRowWindow)
+      .filter((w): w is RowWindow => w !== null)
+      .map((w) => w.endMs);
+    if (personalEnds.length) {
+      // Clamp: a stray personal row from a LATER cluster must never push the
+      // hold beyond this window's own last exam.
+      until = Math.min(Math.max(...personalEnds), cluster.lastEndMs);
+    }
+  }
+  return until;
+}
+
 export function resolveExamPhase(input: ExamPhaseInput): ExamPhase {
   const nowMs = input.now.getTime();
   const todayStart = new Date(input.now);
@@ -220,32 +242,28 @@ export function resolveExamPhase(input: ExamPhaseInput): ExamPhase {
     const exclude: DateRange[] = clusters
       .filter((c) => c.lastDayMs >= todayStart.getTime())
       .map((c) => ({ startISO: isoOfDay(c.startDayMs), endISO: isoOfDay(c.lastDayMs) }));
-    // The active window is the earliest cluster whose last day hasn't passed.
+    // The relevant cluster is the earliest whose last day hasn't passed —
+    // the active window, or the next one coming.
     const cluster = clusters.find((c) => dayEndMs(c.lastDayMs) >= nowMs) ?? null;
     if (!cluster) return { kind: 'classes', exclude };
 
     const windowStartMs = cluster.startDayMs; // first exam day, 00:00 local
     const windowEndMs = dayEndMs(cluster.lastDayMs); // last exam day, 23:59:59.999
-    // Outside the bounds — the day before included — classes track normally,
-    // with `exclude` masking every window day from the lookahead.
-    if (nowMs < windowStartMs || nowMs > windowEndMs) return { kind: 'classes', exclude };
-
     const anchorISO = isoOfDay(addDays(cluster.lastDayMs, 1));
-    // Untagged / unresolvable tag: hold until the OVERALL last exam passes.
-    let until = cluster.lastEndMs;
-    if (input.personal?.length) {
-      const personalEnds = input.personal
-        .map(examRowWindow)
-        .filter((w): w is RowWindow => w !== null)
-        .map((w) => w.endMs);
-      if (personalEnds.length) {
-        // Clamp: a stray personal row from a LATER cluster must never push the
-        // hold beyond this window's own last exam.
-        until = Math.min(Math.max(...personalEnds), cluster.lastEndMs);
-      }
+
+    // Before the first exam day's midnight: classes track normally, with
+    // `exclude` masking window days and `upcoming` carrying the hold timing
+    // for the EARLY-hold handoff (lookahead touching the window).
+    if (nowMs < windowStartMs) {
+      return {
+        kind: 'classes',
+        exclude,
+        upcoming: { untilEpochMs: clusterUntil(cluster, input.personal), anchorISO },
+      };
     }
-    return nowMs < until
-      ? { kind: 'exams', untilEpochMs: until, anchorISO, exclude }
+
+    return nowMs < clusterUntil(cluster, input.personal)
+      ? { kind: 'exams', untilEpochMs: clusterUntil(cluster, input.personal), anchorISO, exclude }
       : { kind: 'resume', anchorISO, exclude };
   }
 
@@ -259,6 +277,16 @@ export function resolveExamPhase(input: ExamPhaseInput): ExamPhase {
       untilEpochMs: dayEndMs(endDay),
       anchorISO: isoOfDay(addDays(endDay, 1)),
       exclude: ranges,
+    };
+  }
+  // Calendar-only upcoming: first pending range supplies early-hold timing.
+  const next = ranges[0];
+  if (next) {
+    const endDay = dayMsOfISO(next.endISO)!;
+    return {
+      kind: 'classes',
+      exclude: ranges,
+      upcoming: { untilEpochMs: dayEndMs(endDay), anchorISO: isoOfDay(addDays(endDay, 1)) },
     };
   }
   return { kind: 'classes', exclude: ranges };

@@ -35,16 +35,14 @@ import {
   matchCustomRows,
   type DisplayPrefs,
 } from '@/core/timetable';
-import { computeClassStatus } from '@/core/liveClass';
-import { resolveWeekPlan } from '@/core/weekPlan';
 import { TIMETABLE_META_KEY, type RawTimetableJSON, type SemesterCalendar, type TimetableEntry } from '@/core/types';
 import { NextClassCard } from '@/components/NextClassCard';
 import { SemesterPulseRows } from '@/components/SemesterPulse';
 import { getSavedSchedule, type SavedSchedule } from '@/prefs/savedSchedule';
 import { loadBundles, type CustomBundle } from '@/prefs/bundles';
-import { buildPhaseSnapshot, publishNextClassWidget } from '@/widgets/nextClassWidget';
+import { buildPhaseSnapshot, publishNextClassWidget, resolveClassView } from '@/widgets/nextClassWidget';
 import { loadExamPhase } from '@/widgets/examPhase';
-import { filterExamWindowSheets, type ExamPhase } from '@/core/examWindow';
+import type { ExamPhase } from '@/core/examWindow';
 import { UpdateBanner } from '@/components/UpdateBanner';
 import { checkForUpdateNow, dismissUpdate, type RemoteVersion } from '@/updates/checkUpdate';
 import { syncExamWidgetsFromCache } from '@/widgets/examWidgets';
@@ -247,59 +245,29 @@ export default function HomeScreen() {
     );
   }, [saved, liveSchool, entriesBySchool, bundles, resultPrefs]);
 
-  const livePlan = useMemo(
-    () =>
-      liveRaw
-        ? resolveWeekPlan(liveRaw[TIMETABLE_META_KEY]?.days, {
-            semesterStartISO: getSemesterStartDate(calendar ?? null),
-          })
-        : null,
-    [liveRaw, calendar]
-  );
-
-  const classStatus = useMemo(
-    () => (livePlan ? computeClassStatus(myEntries, livePlan, now) : null),
-    [myEntries, livePlan, now]
-  );
-
-  // Resume preview: probe the regular pipeline at the first day after the exam
-  // window (08:00). The card's own date label logic then naturally renders
-  // "Sat · 25 Oct"-style lines because the plan's today differs from the
-  // probed class date. Outside the resume phase these are just the live ones.
-  const resumeProbe = useMemo(
-    () => (examPhase.kind === 'resume' ? new Date(examPhase.anchorISO + 'T08:00:00') : null),
-    [examPhase]
-  );
-  const displayPlan = useMemo(() => {
-    const base =
-      resumeProbe && liveRaw
-        ? resolveWeekPlan(liveRaw[TIMETABLE_META_KEY]?.days, {
-            semesterStartISO: getSemesterStartDate(calendar ?? null),
-            now: resumeProbe,
-          })
-        : livePlan;
-    // Exam-window mask: any sheet dated inside a current/upcoming window never
-    // surfaces — the pre-window evening peek would otherwise show the phantom
-    // classes of the first exam day.
-    return filterExamWindowSheets(base, examPhase.exclude) ?? base;
-  }, [resumeProbe, liveRaw, calendar, livePlan, examPhase]);
-  const displayStatus = useMemo(
-    () => (resumeProbe && displayPlan ? computeClassStatus(myEntries, displayPlan, resumeProbe) : classStatus),
-    [resumeProbe, displayPlan, myEntries, classStatus]
-  );
+  // One verdict, one shared resolver (the widget snapshot builder uses the
+  // same function): live next/ongoing, exam hold (in-window OR early — the
+  // evening lookahead-within-window case), or the post-window resume preview.
+  const classView = useMemo(() => {
+    if (!saved || !liveRaw) return null;
+    return resolveClassView(examPhase, {
+      entries: myEntries,
+      metaDays: liveRaw[TIMETABLE_META_KEY]?.days,
+      semesterStartISO: getSemesterStartDate(calendar ?? null),
+      now,
+    });
+  }, [examPhase, saved, liveRaw, myEntries, calendar, now]);
   const classLoading =
     !!saved && !liveRaw && (liveSchool === 'FSM' ? fsm.isLoading : fsc.isLoading);
 
   // Keep the home-screen widget in lock-step with the card (30s tick), routed
   // through the SAME phase-aware builder the background sync uses — exam hold
-  // and resume preview included. Skipped while the timetable is still loading
-  // so we don't flash a transient "none" state on the widget.
+  // (incl. early) and resume preview included. Skipped while the timetable is
+  // still loading so we don't flash a transient "none" state on the widget.
   useEffect(() => {
     if (classLoading) return;
     publishNextClassWidget(
       buildPhaseSnapshot(examPhase, {
-        status: displayStatus,
-        plan: displayPlan,
         needsTag: !saved,
         now,
         chain: {
@@ -310,7 +278,7 @@ export default function HomeScreen() {
         },
       })
     );
-  }, [examPhase, displayStatus, displayPlan, saved, classLoading, now, myEntries, liveRaw, calendar]);
+  }, [examPhase, saved, classLoading, now, myEntries, liveRaw, calendar]);
 
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
@@ -412,17 +380,17 @@ export default function HomeScreen() {
           </View>
 
           {/* Right column: next / ongoing class (spans both left cards);
-              during an exam window the hold takes over (needsTag still wins),
-              and tapping it leads to Exams where the real action is. */}
+              the shared resolver decides live / hold (incl. early) / resume —
+              needsTag still wins, and holding taps through to Exams. */}
           <NextClassCard
-            status={displayStatus}
-            plan={displayPlan}
+            status={classView?.status ?? null}
+            plan={classView?.plan ?? null}
             needsTag={!saved}
             loading={classLoading}
-            examHold={examPhase.kind === 'exams'}
+            examHold={classView?.hold === true}
             onPress={() =>
               router.push(
-                (examPhase.kind === 'exams' ? '/(tabs)/exams' : '/(tabs)/timetable') as any
+                (classView?.hold === true ? '/(tabs)/exams' : '/(tabs)/timetable') as any
               )
             }
           />
