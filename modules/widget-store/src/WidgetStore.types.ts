@@ -1,8 +1,13 @@
 /** Snapshot published to the native home-screen widget. */
 export type NextClassWidgetSnapshot = {
-  /** Widget display state. */
-  state: 'ongoing' | 'next' | 'needsTag' | 'none';
-  /** Course name (ongoing/next only). */
+  /**
+   * Widget display state. 'examBreak' = an exam window is active: render the
+   * hold text (course/sub) instead of any timetable class until
+   * `untilEpochMs`, then auto-advance into the followup queue (pre-rolled to
+   * the first classes after the window).
+   */
+  state: 'ongoing' | 'next' | 'needsTag' | 'none' | 'examBreak';
+  /** Course name (ongoing/next); hold title line e.g. "Exams ongoing." (examBreak). */
   course?: string;
   /** "Sec B · C-301" style line. */
   meta?: string;
@@ -12,10 +17,12 @@ export type NextClassWidgetSnapshot = {
   totalMin?: number;
   /** Extra classes grouped at the same time ("+N more"). */
   extra?: number;
-  /** Secondary line: date label for next, end time for ongoing. */
+  /** Secondary line: date label for next, end time for ongoing, hold sub line for examBreak. */
   sub?: string;
   /** Time-only variant of `sub` for the compact widget (day/date dropped). */
   subTime?: string;
+  /** examBreak only: absolute instant the hold lifts — renderer walks into followups at this time (0 = never auto-advance). */
+  untilEpochMs?: number;
   /**
    * Snapshots of the next ~3 classes after this one. The native renderer walks
    * this queue JS-free so a class ending never leaves a stale "0m left".

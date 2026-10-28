@@ -44,6 +44,9 @@ import {
   getWidgetStore,
   type NextClassWidgetSnapshot,
 } from '../../modules/widget-store/src/WidgetStoreModule';
+import { type ExamPhase } from '@/core/examWindow';
+import { toISODate } from '@/core/dates';
+import { loadExamPhase } from './examPhase';
 
 /** Local-time epoch for `hh:MM` (minutes past midnight) on an ISO date. */
 export function epochFor(dateISO: string, minutes: number): number {
@@ -67,7 +70,13 @@ export function buildSnapshot(
   plan: WeekPlan | null,
   needsTag: boolean,
   now: Date = new Date(),
-  chainSource?: WidgetChainSource
+  chainSource?: WidgetChainSource,
+  /**
+   * ISO date the occurrence label compares against. Defaults to the plan's
+   * own today — pass the REAL today when probing synthetic future times (the
+   * resume preview), so a class 3 days out is labelled with its date.
+   */
+  displayTodayISO?: string
 ): NextClassWidgetSnapshot {
   const updatedAt = now.getTime();
   if (needsTag) return { state: 'needsTag', updatedAt };
@@ -90,13 +99,13 @@ export function buildSnapshot(
       subTime: `ends ${formatSlotEnd(primary.time)}`,
       updatedAt,
     };
-    if (chainSource) out.followup = buildFollowupChain(chainSource, snapshotEndMs(out));
+    if (chainSource) out.followup = buildFollowupChain(chainSource, snapshotEndMs(out), [], displayTodayISO);
     return out;
   }
 
-  // occurrence-date label when the next class isn't on the effective today
+  // occurrence-date label when the next class isn't on the displayed today
   const occLabel =
-    primary.dateISO !== plan?.todayISO
+    primary.dateISO !== (displayTodayISO ?? plan?.todayISO)
       ? (() => {
           const d = new Date(primary.dateISO + 'T00:00:00');
           const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
@@ -117,7 +126,7 @@ export function buildSnapshot(
     subTime: `starts ${formatSlotStart(primary.time)}`,
     updatedAt,
   };
-  if (chainSource) out.followup = buildFollowupChain(chainSource, snapshotEndMs(out));
+  if (chainSource) out.followup = buildFollowupChain(chainSource, snapshotEndMs(out), [], displayTodayISO);
   return out;
 }
 
@@ -138,7 +147,8 @@ export interface WidgetChainSource {
 export function buildFollowupChain(
   source: WidgetChainSource | null | undefined,
   afterMs: number,
-  chain: NextClassWidgetSnapshot[] = []
+  chain: NextClassWidgetSnapshot[] = [],
+  displayTodayISO?: string
 ): NextClassWidgetSnapshot[] | undefined {
   if (!source || !source.entries.length || chain.length >= 3) {
     return chain.length ? chain : undefined;
@@ -152,7 +162,7 @@ export function buildFollowupChain(
       now: probe,
     });
     const status = computeClassStatus(source.entries, plan, probe);
-    const snap = buildSnapshot(status, plan, false, probe);
+    const snap = buildSnapshot(status, plan, false, probe, undefined, displayTodayISO);
     if (snap.state === 'next' || snap.state === 'ongoing') {
       chain.push(snap);
       // next probe: just past THIS class's end
@@ -175,6 +185,68 @@ export function snapshotEndMs(snap: NextClassWidgetSnapshot): number {
   const total = snap.totalMin ?? 0;
   if (snap.state === 'next') return (snap.targetEpochMs ?? 0) + total * 60_000;
   return snap.targetEpochMs ?? 0;
+}
+
+/** Inputs the phase-aware builder needs regardless of phase. */
+export interface PhaseSnapshotInputs {
+  status: ClassStatus | null;
+  plan: WeekPlan | null;
+  needsTag: boolean;
+  now: Date;
+  chain: WidgetChainSource;
+}
+
+/** First probe instant of a resume-anchor day (08:00 local). */
+function anchorProbe(anchorISO: string): Date {
+  return new Date(anchorISO + 'T08:00:00');
+}
+
+/**
+ * Phase-aware snapshot — the SINGLE builder both the Home screen and the
+ * background sync use, so widget and app never disagree during exam windows:
+ *
+ *  - needsTag wins outright (set-up prompt stays reachable);
+ *  - exams  → 'examBreak' hold ("Exams ongoing." / "Stay tuned for update")
+ *             carrying untilEpochMs + a followup queue pre-rolled from the day
+ *             AFTER the window, so the native renderer lifts the hold and lands
+ *             on real resume classes by itself — no JS needed at the flip;
+ *  - resume → the regular pipeline probed at the anchor day 08:00, with labels
+ *             computed against the REAL today (a class 3 days out shows its
+ *             weekday+date, as it should);
+ *  - classes → the untouched normal path.
+ */
+export function buildPhaseSnapshot(
+  phase: ExamPhase,
+  opts: PhaseSnapshotInputs
+): NextClassWidgetSnapshot {
+  const updatedAt = opts.now.getTime();
+  if (opts.needsTag) return { state: 'needsTag', updatedAt };
+
+  if (phase.kind === 'exams') {
+    const probe = anchorProbe(phase.anchorISO);
+    const out: NextClassWidgetSnapshot = {
+      state: 'examBreak',
+      course: 'Exams ongoing.',
+      sub: 'Stay tuned for update',
+      untilEpochMs: phase.untilEpochMs,
+      updatedAt,
+    };
+    const chain = buildFollowupChain(opts.chain, probe.getTime() - 61_000, [], toISODate(opts.now));
+    if (chain) out.followup = chain;
+    return out;
+  }
+
+  if (phase.kind === 'resume') {
+    const probe = anchorProbe(phase.anchorISO);
+    const plan = resolveWeekPlan(opts.chain.metaDays, {
+      semesterStartISO: opts.chain.semesterStartISO,
+      now: probe,
+    });
+    const status = computeClassStatus(opts.chain.entries, plan, probe);
+    return buildSnapshot(status, plan, false, probe, opts.chain, toISODate(opts.now));
+  }
+
+  return buildSnapshot(opts.status, opts.plan, false, opts.now, opts.chain);
 }
 
 /** Avoid re-poking the widget manager when the rendered content is unchanged. */
@@ -251,15 +323,24 @@ export async function syncNextClassWidgetFromCache(now: Date = new Date()): Prom
       );
     }
 
-    const plan = resolveWeekPlan(raw[TIMETABLE_META_KEY]?.days, {
-      semesterStartISO: getSemesterStartDate(calendarEntry?.data ?? null),
-    });
+    const semesterStartISO = getSemesterStartDate(calendarEntry?.data ?? null);
+    const plan = resolveWeekPlan(raw[TIMETABLE_META_KEY]?.days, { semesterStartISO });
     const status = computeClassStatus(myEntries, plan, now);
+
+    // Exam-window gate: holds classes / previews the post-window resume
+    // exactly like the Home card (same builder). Fails open to 'classes'.
+    const phase = await loadExamPhase(now);
     publishNextClassWidget(
-      buildSnapshot(status, plan, false, now, {
-        entries: myEntries,
-        metaDays: raw[TIMETABLE_META_KEY]?.days,
-        semesterStartISO: getSemesterStartDate(calendarEntry?.data ?? null),
+      buildPhaseSnapshot(phase, {
+        status,
+        plan,
+        needsTag: false,
+        now,
+        chain: {
+          entries: myEntries,
+          metaDays: raw[TIMETABLE_META_KEY]?.days,
+          semesterStartISO,
+        },
       })
     );
   } catch {

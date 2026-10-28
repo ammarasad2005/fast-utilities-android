@@ -14,6 +14,7 @@ import { resolveWeekPlan, attachEntries, getEffectiveTodayDate, isTomorrowPrevie
 import { computeClassStatus } from '@/core/liveClass';
 import { buildSnapshot, epochFor, buildFollowupChain, snapshotEndMs } from '@/widgets/nextClassWidget';
 import { parseRemoteVersion, isUpdateAvailable, localVersionCode } from '@/updates/checkUpdate';
+import { resolveExamPhase, type ExamPhaseInput } from '@/core/examWindow';
 import { getSemesterProgress, getSemesterMilestones, getSemesterStartDate, getSemesterEndDate, getFinalExamsEndDate, getSemesterWeekNumber, computeCurrentPhase } from '@/core/semester';
 import type { RawTimetableJSON, ExamEntry, RawFacultyDepartment, TimetableEntry, SemesterCalendar } from '@/core/types';
 
@@ -964,3 +965,165 @@ describe('buildSnapshot followup chain', () => {
   });
 });
 
+
+// ─── Exam-window gating (resolveExamPhase) ──────────────────────────────────
+// Pinned scenario: Fall 2026 sessional window Mon 19 – Wed 21 Oct 2026.
+
+describe('resolveExamPhase', () => {
+  const CAL = {
+    semester: 'Fall 2026',
+    keyDates: [
+      { label: 'First Day of Classes', date: '2026-08-17' },
+      { label: 'First Sessional Examinations', date: '2026-10-19', endDate: '2026-10-21' },
+      { label: 'Final Examinations', date: '2026-12-14', endDate: '2026-12-20' },
+    ],
+  } as SemesterCalendar;
+
+  const mkRow = (
+    date: string,
+    time = '09:00 AM – 11:00 AM',
+    over: Partial<ExamEntry> = {}
+  ): ExamEntry => ({
+    date,
+    day: '',
+    time,
+    courseCode: 'CS1004',
+    courseName: 'OOP',
+    batch: '2023',
+    department: 'CS',
+    school: 'FSC',
+    ...over,
+  });
+
+  const winRows: ExamEntry[] = [
+    mkRow('19/10/2026'),
+    mkRow('20/10/2026'),
+    mkRow('21/10/2026', '09:00 AM – 11:00 AM', { courseCode: 'CS2001', courseName: 'DSA' }),
+  ];
+
+  // local instant helper: (year, month 1-12, day, hour, minute)
+  const at = (y: number, mo: number, d: number, h: number, mi = 0) =>
+    new Date(y, mo - 1, d, h, mi, 0);
+
+  const base = (over: Partial<ExamPhaseInput>): ExamPhaseInput => ({
+    calendar: CAL,
+    rows: winRows,
+    personal: null,
+    visibilityOn: true,
+    now: at(2026, 10, 20, 10),
+    ...over,
+  });
+
+  it('visibility off: the calendar range holds for its whole tenure', () => {
+    const p = resolveExamPhase(base({ visibilityOn: false, rows: [] }));
+    expect(p.kind).toBe('exams');
+    if (p.kind === 'exams') {
+      expect(p.untilEpochMs).toBe(at(2026, 10, 22, 0).getTime() - 1); // Wed 23:59:59.999
+      expect(p.anchorISO).toBe('2026-10-22');
+    }
+  });
+
+  it('visibility off: outside any calendar exam range → classes', () => {
+    expect(
+      resolveExamPhase(base({ visibilityOn: false, rows: [], now: at(2026, 11, 5, 12) })).kind
+    ).toBe('classes');
+  });
+
+  it('visibility off: final examinations are a window too', () => {
+    const p = resolveExamPhase(
+      base({ visibilityOn: false, rows: [], now: at(2026, 12, 15, 9) })
+    );
+    expect(p.kind).toBe('exams');
+    if (p.kind === 'exams') expect(p.anchorISO).toBe('2026-12-21');
+  });
+
+  it('untagged student holds until the OVERALL last exam of the schedule', () => {
+    const p = resolveExamPhase(base({ now: at(2026, 10, 19, 10) }));
+    expect(p).toEqual({
+      kind: 'exams',
+      untilEpochMs: at(2026, 10, 21, 11).getTime(),
+      anchorISO: '2026-10-22',
+    });
+  });
+
+  it('untagged: once the overall last exam passes mid-day, resume previews', () => {
+    expect(resolveExamPhase(base({ now: at(2026, 10, 21, 11, 30) }))).toEqual({
+      kind: 'resume',
+      anchorISO: '2026-10-22',
+    });
+  });
+
+  it('back to normal the day after the window', () => {
+    expect(resolveExamPhase(base({ now: at(2026, 10, 22, 9) })).kind).toBe('classes');
+  });
+
+  it('the day before the first exam is still a normal class day', () => {
+    expect(resolveExamPhase(base({ now: at(2026, 10, 18, 15) })).kind).toBe('classes');
+  });
+
+  it("tagged student: hold lifts at HIS OWN last exam, not the schedule's", () => {
+    const personal = [winRows[0], winRows[1]]; // last = Tue 20 Oct 11:00
+    const held = resolveExamPhase(base({ personal, now: at(2026, 10, 20, 10) }));
+    expect(held).toEqual({
+      kind: 'exams',
+      untilEpochMs: at(2026, 10, 20, 11).getTime(),
+      anchorISO: '2026-10-22',
+    });
+    // the instant that exam has passed, resume preview takes over — even
+    // though other students still have Wed exams
+    const done = resolveExamPhase(base({ personal, now: at(2026, 10, 20, 11, 30) }));
+    expect(done).toEqual({ kind: 'resume', anchorISO: '2026-10-22' });
+  });
+
+  it('last exam ends exactly at its end time: that instant is already resume', () => {
+    const personal = [winRows[0], winRows[1]];
+    expect(resolveExamPhase(base({ personal, now: at(2026, 10, 20, 11) })).kind).toBe('resume');
+  });
+
+  it('a tag resolving to zero rows behaves as untagged', () => {
+    const p = resolveExamPhase(base({ personal: [], now: at(2026, 10, 19, 10) }));
+    expect(p).toEqual({
+      kind: 'exams',
+      untilEpochMs: at(2026, 10, 21, 11).getTime(),
+      anchorISO: '2026-10-22',
+    });
+  });
+
+  it('schedule dates win over the calendar on mismatch (slippage rule)', () => {
+    // Schedule fully in the past even though the calendar claims a window NOW.
+    const pastRows = [mkRow('05/10/2026'), mkRow('07/10/2026')];
+    expect(
+      resolveExamPhase(base({ rows: pastRows, now: at(2026, 10, 20, 10) })).kind
+    ).toBe('classes');
+  });
+
+  it('a dump mixing two sessionals keeps the current cluster as the window', () => {
+    const mixed = [...winRows, mkRow('30/11/2026')]; // second sessional, >10d gap
+    const p = resolveExamPhase(base({ rows: mixed, now: at(2026, 10, 20, 10) }));
+    expect(p).toEqual({
+      kind: 'exams',
+      untilEpochMs: at(2026, 10, 21, 11).getTime(),
+      anchorISO: '2026-10-22',
+    });
+  });
+
+  it('a personal row from a later cluster can never extend the current hold', () => {
+    const personal = [winRows[0], mkRow('30/11/2026')];
+    const rows = [...winRows, mkRow('30/11/2026')];
+    const p = resolveExamPhase(base({ rows, personal, now: at(2026, 10, 19, 10) }));
+    expect(p).toEqual({
+      kind: 'exams',
+      untilEpochMs: at(2026, 10, 21, 11).getTime(), // clamped to this window's last exam
+      anchorISO: '2026-10-22',
+    });
+  });
+
+  it('visibility on but zero usable rows → calendar tenure fallback', () => {
+    const p = resolveExamPhase(base({ rows: [mkRow('not-a-date')], now: at(2026, 10, 20, 10) }));
+    expect(p.kind).toBe('exams');
+    if (p.kind === 'exams') {
+      expect(p.untilEpochMs).toBe(at(2026, 10, 22, 0).getTime() - 1);
+      expect(p.anchorISO).toBe('2026-10-22');
+    }
+  });
+});

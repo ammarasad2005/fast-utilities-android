@@ -24,12 +24,15 @@ export function NextClassCard({
   needsTag,
   loading,
   onPress,
+  examHold,
 }: {
   status: ClassStatus | null;
   plan: WeekPlan | null;
   needsTag: boolean;
   loading: boolean;
   onPress: () => void;
+  /** Exam-window hold: render "Exams ongoing." instead of any (phantom) class. */
+  examHold?: boolean;
 }) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
@@ -58,7 +61,9 @@ export function NextClassCard({
       {/* Header */}
       <View style={styles.header}>
         <View style={[styles.dot, { backgroundColor: ongoing ? colors.success : colors.warning }]} />
-        <Text style={styles.headerText}>{ongoing ? 'ONGOING NOW' : 'NEXT UP'}</Text>
+        <Text style={styles.headerText}>
+          {examHold ? 'EXAM WEEK' : ongoing ? 'ONGOING NOW' : 'NEXT UP'}
+        </Text>
       </View>
 
       {loading ? (
@@ -72,6 +77,12 @@ export function NextClassCard({
           <Text style={styles.placeholderText}>
             Tag your timetable in the Timetable tab to track classes live here.
           </Text>
+        </View>
+      ) : examHold ? (
+        <View style={styles.centerFill}>
+          <Ionicons name="hourglass-outline" size={20} color={colors.textTertiary} />
+          <Text style={styles.placeholderTitle}>Exams ongoing.</Text>
+          <Text style={styles.placeholderText}>Stay tuned for update</Text>
         </View>
       ) : !status || !primary ? (
         <View style={styles.centerFill}>

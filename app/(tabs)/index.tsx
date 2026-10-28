@@ -42,7 +42,9 @@ import { NextClassCard } from '@/components/NextClassCard';
 import { SemesterPulseRows } from '@/components/SemesterPulse';
 import { getSavedSchedule, type SavedSchedule } from '@/prefs/savedSchedule';
 import { loadBundles, type CustomBundle } from '@/prefs/bundles';
-import { buildSnapshot, publishNextClassWidget } from '@/widgets/nextClassWidget';
+import { buildPhaseSnapshot, publishNextClassWidget } from '@/widgets/nextClassWidget';
+import { loadExamPhase } from '@/widgets/examPhase';
+import type { ExamPhase } from '@/core/examWindow';
 import { UpdateBanner } from '@/components/UpdateBanner';
 import { checkForUpdateNow, dismissUpdate, type RemoteVersion } from '@/updates/checkUpdate';
 import { syncExamWidgetsFromCache } from '@/widgets/examWidgets';
@@ -122,6 +124,28 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, []);
 
+  // Exam-window gate — the SAME signal the background widget sync applies, so
+  // home card and home-screen widget never disagree: 'exams' holds class
+  // tracking ("Exams ongoing." / "Stay tuned for update"), 'resume' previews
+  // the first classes after the window. Cache-only, recomputed minutely; the
+  // midnight and "last exam ended" flips land within a minute (deduped).
+  const [examPhase, setExamPhase] = useState<ExamPhase>({ kind: 'classes' });
+  useEffect(() => {
+    let active = true;
+    const run = () => {
+      loadExamPhase().then((p) => {
+        if (!active) return;
+        setExamPhase((prev) => (JSON.stringify(prev) === JSON.stringify(p) ? prev : p));
+      });
+    };
+    run();
+    const timer = setInterval(run, 60_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
+
   // Sideload update check — throttled inside (a few network hits/day) with a
   // failure-safe throttle + cached manifest, so a flaky connection can no
   // longer swallow an available update. Re-checked on every app foreground;
@@ -189,6 +213,11 @@ export default function HomeScreen() {
           setResultPrefs(EMPTY_DISPLAY_PREFS);
         }
       })();
+      // Refreshed on focus too: tagging exams mid-session then coming home
+      // must re-evaluate the hold immediately.
+      loadExamPhase().then((p) => {
+        if (active) setExamPhase((prev) => (JSON.stringify(prev) === JSON.stringify(p) ? prev : p));
+      });
       return () => {
         active = false;
       };
@@ -232,22 +261,51 @@ export default function HomeScreen() {
     () => (livePlan ? computeClassStatus(myEntries, livePlan, now) : null),
     [myEntries, livePlan, now]
   );
+
+  // Resume preview: probe the regular pipeline at the first day after the exam
+  // window (08:00). The card's own date label logic then naturally renders
+  // "Sat · 25 Oct"-style lines because the plan's today differs from the
+  // probed class date. Outside the resume phase these are just the live ones.
+  const resumeProbe = useMemo(
+    () => (examPhase.kind === 'resume' ? new Date(examPhase.anchorISO + 'T08:00:00') : null),
+    [examPhase]
+  );
+  const displayPlan = useMemo(() => {
+    if (resumeProbe && liveRaw) {
+      return resolveWeekPlan(liveRaw[TIMETABLE_META_KEY]?.days, {
+        semesterStartISO: getSemesterStartDate(calendar ?? null),
+        now: resumeProbe,
+      });
+    }
+    return livePlan;
+  }, [resumeProbe, liveRaw, calendar, livePlan]);
+  const displayStatus = useMemo(
+    () => (resumeProbe && displayPlan ? computeClassStatus(myEntries, displayPlan, resumeProbe) : classStatus),
+    [resumeProbe, displayPlan, myEntries, classStatus]
+  );
   const classLoading =
     !!saved && !liveRaw && (liveSchool === 'FSM' ? fsm.isLoading : fsc.isLoading);
 
-  // Keep the home-screen widget in lock-step with the card (30s tick).
-  // Skipped while the timetable is still loading so we don't flash a
-  // transient "none" state on the widget.
+  // Keep the home-screen widget in lock-step with the card (30s tick), routed
+  // through the SAME phase-aware builder the background sync uses — exam hold
+  // and resume preview included. Skipped while the timetable is still loading
+  // so we don't flash a transient "none" state on the widget.
   useEffect(() => {
     if (classLoading) return;
     publishNextClassWidget(
-      buildSnapshot(classStatus, livePlan, !saved, now, {
-        entries: myEntries,
-        metaDays: liveRaw?.[TIMETABLE_META_KEY]?.days,
-        semesterStartISO: getSemesterStartDate(calendar ?? null),
+      buildPhaseSnapshot(examPhase, {
+        status: displayStatus,
+        plan: displayPlan,
+        needsTag: !saved,
+        now,
+        chain: {
+          entries: myEntries,
+          metaDays: liveRaw?.[TIMETABLE_META_KEY]?.days,
+          semesterStartISO: getSemesterStartDate(calendar ?? null),
+        },
       })
     );
-  }, [classStatus, livePlan, saved, classLoading, now, myEntries, liveRaw, calendar]);
+  }, [examPhase, displayStatus, displayPlan, saved, classLoading, now, myEntries, liveRaw, calendar]);
 
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
@@ -348,13 +406,20 @@ export default function HomeScreen() {
             ) : null}
           </View>
 
-          {/* Right column: next / ongoing class (spans both left cards) */}
+          {/* Right column: next / ongoing class (spans both left cards);
+              during an exam window the hold takes over (needsTag still wins),
+              and tapping it leads to Exams where the real action is. */}
           <NextClassCard
-            status={classStatus}
-            plan={livePlan}
+            status={displayStatus}
+            plan={displayPlan}
             needsTag={!saved}
             loading={classLoading}
-            onPress={() => router.push('/(tabs)/timetable' as any)}
+            examHold={examPhase.kind === 'exams'}
+            onPress={() =>
+              router.push(
+                (examPhase.kind === 'exams' ? '/(tabs)/exams' : '/(tabs)/timetable') as any
+              )
+            }
           />
         </View>
 

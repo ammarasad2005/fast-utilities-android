@@ -61,6 +61,7 @@ object WidgetRenderer {
     var targetMs: Long = 0 // ongoing: class end; next: class start
     var totalMin: Int = 0
     var extra: Int = 0
+    var untilMs: Long = 0 // examBreak only: when the exam-window hold lifts
 
     constructor()
 
@@ -74,6 +75,7 @@ object WidgetRenderer {
       // legacy snapshots only carried totalMin on ongoing; default keeps parity
       totalMin = j.optInt("totalMin", 1).coerceAtLeast(1)
       extra = j.optInt("extra", 0)
+      untilMs = j.optLong("untilEpochMs", 0L)
     }
 
     val isClass: Boolean get() = state == "next" || state == "ongoing"
@@ -131,7 +133,13 @@ object WidgetRenderer {
     }
     val queue = pushQueue()
     var guard = 0
-    while (cur.isClass && now >= cur.endMs && queue.isNotEmpty() && guard < 8) {
+    // Advance when a class ends — or when an exam-window hold (examBreak, JS-free
+    // via its untilMs) expires into the pre-rolled post-window follow-ups.
+    while (
+      queue.isNotEmpty() && guard < 8 &&
+      ((cur.isClass && now >= cur.endMs) ||
+        (cur.state == "examBreak" && cur.untilMs > 0 && now >= cur.untilMs))
+    ) {
       cur = queue.removeFirst()
       guard++
     }
@@ -159,29 +167,21 @@ object WidgetRenderer {
       }
       val now = System.currentTimeMillis()
       when (snap.optString("state")) {
-        "ongoing", "next" -> {
+        "ongoing", "next" -> renderRolled(context, views, full, rollForward(snap, now), now)
+        "examBreak" -> {
+          // The hold sits until its untilMs, then the pre-rolled post-window
+          // follow-ups adopt themselves through the regular class path.
           val rolled = rollForward(snap, now)
-          val expired = rolled.isClass && now >= rolled.endMs
-          when {
-            rolled.state == "needsTag" ->
-              renderEmpty(views, full, "Tag your timetable", "Home → Timetable tab → Tag as my timetable.")
-            !rolled.isClass ->
-              renderEmpty(views, full, "No upcoming classes", "Nothing scheduled for your tagged timetable.")
-            expired -> {
-              // primary + follow-ups all passed and JS hasn't republished yet
-              WidgetRefreshReceiver.enqueueSync(context)
-              renderClass(
-                views, full, rolled, ongoing = true, now = now, subOverride = null, updating = true
-              )
-            }
-            rolled.state == "ongoing" ->
-              renderClass(views, full, rolled, ongoing = true, now = now, subOverride = null)
-            now < rolled.startMs ->
-              renderClass(views, full, rolled, ongoing = false, now = now, subOverride = null)
-            else -> renderClass(
-              views, full, rolled, ongoing = true, now = now,
-              subOverride = "ends " + fmt12(rolled.endMs)
+          if (rolled.state == "examBreak") {
+            renderEmpty(
+              views, full,
+              rolled.course.ifEmpty { "Exams ongoing." },
+              rolled.sub.ifEmpty { "Stay tuned for update" },
+              header = "EXAM WEEK",
+              headerColor = C_HEADER_NEXT
             )
+          } else {
+            renderRolled(context, views, full, rolled, now)
           }
         }
         "needsTag" -> renderEmpty(views, full, "Tag your timetable", "Home → Timetable tab → Tag as my timetable.")
@@ -265,9 +265,48 @@ object WidgetRenderer {
     }
   }
 
-  private fun renderEmpty(views: RemoteViews, full: Boolean, title: String, subtitle: String) {
-    views.setTextViewText(R.id.widget_header, "CLASSES")
-    views.setTextColor(R.id.widget_header, C_EMPTY_SUB)
+  /** Render whatever rollForward landed on: class states, or the empty fallbacks. */
+  private fun renderRolled(
+    context: Context,
+    views: RemoteViews,
+    full: Boolean,
+    rolled: Snapshot,
+    now: Long
+  ) {
+    val expired = rolled.isClass && now >= rolled.endMs
+    when {
+      rolled.state == "needsTag" ->
+        renderEmpty(views, full, "Tag your timetable", "Home → Timetable tab → Tag as my timetable.")
+      !rolled.isClass ->
+        renderEmpty(views, full, "No upcoming classes", "Nothing scheduled for your tagged timetable.")
+      expired -> {
+        // primary + follow-ups all passed and JS hasn't republished yet
+        WidgetRefreshReceiver.enqueueSync(context)
+        renderClass(
+          views, full, rolled, ongoing = true, now = now, subOverride = null, updating = true
+        )
+      }
+      rolled.state == "ongoing" ->
+        renderClass(views, full, rolled, ongoing = true, now = now, subOverride = null)
+      now < rolled.startMs ->
+        renderClass(views, full, rolled, ongoing = false, now = now, subOverride = null)
+      else -> renderClass(
+        views, full, rolled, ongoing = true, now = now,
+        subOverride = "ends " + fmt12(rolled.endMs)
+      )
+    }
+  }
+
+  private fun renderEmpty(
+    views: RemoteViews,
+    full: Boolean,
+    title: String,
+    subtitle: String,
+    header: String = "CLASSES",
+    headerColor: Int = C_EMPTY_SUB
+  ) {
+    views.setTextViewText(R.id.widget_header, header)
+    views.setTextColor(R.id.widget_header, headerColor)
     views.setTextViewText(R.id.widget_course, title)
     views.setTextColor(R.id.widget_course, C_EMPTY_TITLE)
     views.setTextViewText(R.id.widget_countdown, "")

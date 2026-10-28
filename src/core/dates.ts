@@ -81,6 +81,14 @@ export function parseTimeRange(range: string): { start: number; end: number } {
 }
 
 /** ISO date ("2026-08-17") → "Mon 17 Aug" */
+/** "YYYY-MM-DD" for a local Date (manual format — Hermes-safe). */
+export function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function formatISODate(isoDate: string): string {
   const d = new Date(isoDate + 'T00:00:00');
   if (Number.isNaN(d.getTime())) return isoDate;
